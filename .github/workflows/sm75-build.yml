@@ -1,9 +1,6 @@
 name: SM75 build and contract tests
 
 on:
-  push:
-    branches:
-      - feat/sm75-rk4v4-e8
   pull_request:
     branches:
       - master
