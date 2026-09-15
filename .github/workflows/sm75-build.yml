@@ -5,6 +5,10 @@ on:
     branches:
       - master
 
+concurrency:
+  group: sm75-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sm75-build:
     runs-on: ubuntu-24.04
