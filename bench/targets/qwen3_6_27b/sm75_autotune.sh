@@ -87,8 +87,8 @@ fi
 mkdir -p "${LOG_DIR}"
 SUMMARY="${LOG_DIR}/summary.tsv"
 RAW="${LOG_DIR}/raw.tsv"
-printf 'kv\tprefill_chunk\tdraft\tstatus\tdecode_mean_tok_s\tdecode_stddev_tok_s\tacceptance_pct\tmode\treport\n' > "${SUMMARY}"
-printf 'kv\tprefill_chunk\tdraft\trep\tdecode_tok_s\tacceptance_pct\tlog\n' > "${RAW}"
+printf 'kv\tprefill_chunk\tdraft\tstatus\tprefill_mean_tok_s\tdecode_mean_tok_s\tdecode_stddev_tok_s\tacceptance_pct\tmode\treport\n' > "${SUMMARY}"
+printf 'kv\tprefill_chunk\tdraft\trep\tprefill_tok_s\tdecode_tok_s\tacceptance_pct\tlog\n' > "${RAW}"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi -i "${DEVICE}" \
@@ -142,7 +142,7 @@ run_bench_profile() {
   if (( rc != 0 )); then
     echo "profile failed: kv=${kv} chunk=${chunk} draft=${draft}; see ${stderr}" >&2
     tail -n 30 "${stderr}" >&2 || true
-    printf '%s\t%s\t%s\tFAIL\t-\t-\t-\tbench\t%s\n' \
+    printf '%s\t%s\t%s\tFAIL\t-\t-\t-\t-\tbench\t%s\n' \
       "${kv}" "${chunk}" "${draft}" "${report}" >> "${SUMMARY}"
     return 0
   fi
@@ -159,18 +159,29 @@ tests = report.get("tests", [])
 if len(tests) != 1:
     raise SystemExit(f"expected one benchmark test in {path}, got {len(tests)}")
 test = tests[0]
-mean = test.get("decode_output_tok_s_mean")
+prefill = test.get("prefill_prompt_tok_s_mean")
+decode = test.get("decode_output_tok_s_mean")
 stddev = test.get("decode_output_tok_s_stddev")
 spec = test.get("speculative", {})
 acceptance = spec.get("acceptance_rate")
-if mean is None:
+if prefill is None:
+    raise SystemExit(f"missing prefill throughput in {path}")
+if decode is None:
     raise SystemExit(f"missing decode throughput in {path}")
 if stddev is None:
     stddev = 0.0
 if acceptance is None:
     acceptance = 0.0
-print(f"{kv}\t{chunk}\t{draft}\tPASS\t{float(mean):.3f}\t{float(stddev):.3f}\t{100.0*float(acceptance):.3f}\tbench\t{path}")
+print(
+    f"{kv}\t{chunk}\t{draft}\tPASS\t{float(prefill):.3f}\t{float(decode):.3f}\t"
+    f"{float(stddev):.3f}\t{100.0*float(acceptance):.3f}\tbench\t{path}"
+)
 PY
+}
+
+parse_prefill_rate() {
+  local file=$1
+  sed -nE 's/.*prefill speed[[:space:]]+([0-9]+([.][0-9]+)?) tok\/s.*/\1/p' "${file}" | tail -n 1
 }
 
 parse_decode_rate() {
@@ -217,15 +228,18 @@ run_cli_once() {
     tail -n 25 "${log}" >&2 || true
     return "${rc}"
   fi
-  local decode acceptance
+
+  local prefill decode acceptance
+  prefill=$(parse_prefill_rate "${log}")
   decode=$(parse_decode_rate "${log}")
+  [[ -n "${prefill}" ]] || return 89
   [[ -n "${decode}" ]] || return 90
   acceptance=0
   if (( draft > 0 )); then
     acceptance=$(parse_acceptance "${log}")
     [[ -n "${acceptance}" ]] || acceptance=0
   fi
-  printf '%s\t%s\n' "${decode}" "${acceptance}"
+  printf '%s\t%s\t%s\n' "${prefill}" "${decode}" "${acceptance}"
 }
 
 run_cli_profile() {
@@ -233,53 +247,73 @@ run_cli_profile() {
   local chunk=$2
   local draft=$3
   local prefix="${kv}-p${chunk}-d${draft}"
-  local warm rep values="" accepts=""
+  local warm rep prefills="" decodes="" accepts=""
 
   for ((warm = 1; warm <= WARMUP; ++warm)); do
     run_cli_once "${kv}" "${chunk}" "${draft}" "${prefix}-warm${warm}" >/dev/null || {
-      printf '%s\t%s\t%s\tFAIL\t-\t-\t-\tcli\t%s\n' \
+      printf '%s\t%s\t%s\tFAIL\t-\t-\t-\t-\tcli\t%s\n' \
         "${kv}" "${chunk}" "${draft}" "${prefix}" >> "${SUMMARY}"
       return 0
     }
   done
 
   for ((rep = 1; rep <= REPS; ++rep)); do
-    local result decode acceptance
+    local result prefill decode acceptance
     result=$(run_cli_once "${kv}" "${chunk}" "${draft}" "${prefix}-rep${rep}") || {
-      printf '%s\t%s\t%s\tFAIL\t-\t-\t-\tcli\t%s\n' \
+      printf '%s\t%s\t%s\tFAIL\t-\t-\t-\t-\tcli\t%s\n' \
         "${kv}" "${chunk}" "${draft}" "${prefix}" >> "${SUMMARY}"
       return 0
     }
-    decode=${result%%$'\t'*}
-    acceptance=${result#*$'\t'}
-    values+=" ${decode}"
+    IFS=$'\t' read -r prefill decode acceptance <<< "${result}"
+    prefills+=" ${prefill}"
+    decodes+=" ${decode}"
     accepts+=" ${acceptance}"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${kv}" "${chunk}" "${draft}" "${rep}" "${decode}" "${acceptance}" \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${kv}" "${chunk}" "${draft}" "${rep}" "${prefill}" "${decode}" "${acceptance}" \
       "${LOG_DIR}/${prefix}-rep${rep}.log" >> "${RAW}"
   done
 
   awk -v kv="${kv}" -v chunk="${chunk}" -v draft="${draft}" -v prefix="${prefix}" \
-      -v vals="${values}" -v accs="${accepts}" 'BEGIN {
-        n = split(vals, v, " "); count = 0; sum = 0; sum2 = 0;
-        for (i = 1; i <= n; ++i) if (v[i] != "") {
-          x = v[i] + 0; sum += x; sum2 += x*x; ++count;
+      -v pvals="${prefills}" -v dvals="${decodes}" -v accs="${accepts}" 'BEGIN {
+        pn = split(pvals, p, " "); pcount = 0; psum = 0;
+        for (i = 1; i <= pn; ++i) if (p[i] != "") { psum += p[i] + 0; ++pcount; }
+        dn = split(dvals, d, " "); dcount = 0; dsum = 0; dsum2 = 0;
+        for (i = 1; i <= dn; ++i) if (d[i] != "") {
+          x = d[i] + 0; dsum += x; dsum2 += x*x; ++dcount;
         }
         an = split(accs, a, " "); asum = 0; acount = 0;
         for (i = 1; i <= an; ++i) if (a[i] != "") { asum += a[i] + 0; ++acount; }
-        if (count == 0) exit 1;
-        mean = sum / count;
-        variance = count > 1 ? (sum2 - count*mean*mean)/(count-1) : 0;
+        if (pcount == 0 || dcount == 0) exit 1;
+        pmean = psum / pcount;
+        dmean = dsum / dcount;
+        variance = dcount > 1 ? (dsum2 - dcount*dmean*dmean)/(dcount-1) : 0;
         if (variance < 0) variance = 0;
-        printf "%s\t%s\t%s\tPASS\t%.3f\t%.3f\t%.3f\tcli\t%s\n",
-               kv, chunk, draft, mean, sqrt(variance), acount ? asum/acount : 0, prefix;
+        printf "%s\t%s\t%s\tPASS\t%.3f\t%.3f\t%.3f\t%.3f\tcli\t%s\n",
+               kv, chunk, draft, pmean, dmean, sqrt(variance),
+               acount ? asum/acount : 0, prefix;
       }' >> "${SUMMARY}"
+}
+
+print_profile() {
+  local label=$1
+  local row=$2
+  local kv chunk draft status prefill decode stddev acceptance mode report
+  IFS=$'\t' read -r kv chunk draft status prefill decode stddev acceptance mode report <<< "${row}"
+  echo "${label}:"
+  echo "  kv=${kv} prefill_chunk=${chunk} draft=${draft} prefill=${prefill} tok/s decode=${decode} tok/s stddev=${stddev} acceptance=${acceptance}%"
+  echo "  measurement=${mode} report=${report}"
+  if (( draft > 0 )); then
+    echo "  runtime flags: --kv-dtype ${kv} --prefill-chunk ${chunk} --spec mtp --draft-tokens ${draft} --lm-head-draft"
+  else
+    echo "  runtime flags: --kv-dtype ${kv} --prefill-chunk ${chunk}"
+  fi
 }
 
 if (( USE_BENCH )); then
   echo "Using one-load-per-profile benchmark: ${BENCH_BIN}"
 else
   echo "ninfer_bench not found; using slower CLI fallback: ${BIN}" >&2
+  echo "CLI fallback uses a short text prompt; use its prefill figures only as diagnostics, not as the balanced-profile selector." >&2
 fi
 
 for kv in ${KV_MODES}; do
@@ -295,25 +329,42 @@ for kv in ${KV_MODES}; do
   done
 done
 
-BEST=$(awk -F '\t' 'NR > 1 && $4 == "PASS" { if (!seen || $5 + 0 > best) { seen=1; best=$5+0; line=$0 } } END { print line }' "${SUMMARY}")
+BEST_DECODE=$(awk -F '\t' 'NR > 1 && $4 == "PASS" { if (!seen || $6 + 0 > best) { seen=1; best=$6+0; line=$0 } } END { print line }' "${SUMMARY}")
+BEST_PREFILL=$(awk -F '\t' 'NR > 1 && $4 == "PASS" { if (!seen || $5 + 0 > best) { seen=1; best=$5+0; line=$0 } } END { print line }' "${SUMMARY}")
+
+if [[ -z "${BEST_DECODE}" ]]; then
+  echo "No profile completed successfully." >&2
+  exit 1
+fi
 
 echo
 echo "Autotune results: ${SUMMARY}"
 column -t -s $'\t' "${SUMMARY}" 2>/dev/null || cat "${SUMMARY}"
-if [[ -n "${BEST}" ]]; then
-  IFS=$'\t' read -r best_kv best_chunk best_draft _ best_rate best_std best_accept best_mode best_report <<< "${BEST}"
+echo
+print_profile "Fastest decode profile" "${BEST_DECODE}"
+if [[ -n "${BEST_PREFILL}" ]]; then
   echo
-  echo "Fastest measured decode profile on this card:"
-  echo "  kv=${best_kv} prefill_chunk=${best_chunk} draft=${best_draft} mean=${best_rate} tok/s stddev=${best_std} acceptance=${best_accept}%"
-  echo "  measurement=${best_mode} report=${best_report}"
-  if (( best_draft > 0 )); then
-    echo "  runtime flags: --kv-dtype ${best_kv} --prefill-chunk ${best_chunk} --spec mtp --draft-tokens ${best_draft} --lm-head-draft"
-  else
-    echo "  runtime flags: --kv-dtype ${best_kv} --prefill-chunk ${best_chunk}"
+  print_profile "Fastest prefill profile" "${BEST_PREFILL}"
+fi
+
+if (( USE_BENCH )); then
+  MAX_DECODE=$(awk -F '\t' 'NR > 1 && $4 == "PASS" { if (!seen || $6 + 0 > best) { seen=1; best=$6+0 } } END { if (seen) printf "%.9f", best }' "${SUMMARY}")
+  BALANCED=$(awk -F '\t' -v max_decode="${MAX_DECODE}" '
+    NR > 1 && $4 == "PASS" && ($6 + 0) >= (max_decode * 0.97) {
+      p = $5 + 0; d = $6 + 0;
+      if (!seen || p > best_p || (p == best_p && d > best_d)) {
+        seen=1; best_p=p; best_d=d; line=$0;
+      }
+    }
+    END { print line }
+  ' "${SUMMARY}")
+  if [[ -n "${BALANCED}" ]]; then
+    echo
+    print_profile "Balanced daily profile (>=97% of best decode, then max prefill)" "${BALANCED}"
   fi
 else
-  echo "No profile completed successfully." >&2
-  exit 1
+  echo
+  echo "Balanced daily profile is intentionally not selected from CLI fallback measurements; build ninfer_bench for a 2048-token prompt comparison."
 fi
 
 echo
