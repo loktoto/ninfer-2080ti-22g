@@ -152,16 +152,40 @@ Default fit ladder:
 
 Each eager row uses `--max-context N --kv-capacity N`: the requested KV reservation is therefore
 explicit, not automatically shrunk to whatever happens to fit. A row is marked PASS only after the
-model loads with that exact capacity and generates one token with RK4V4E8. The highest eager-fitting
-size is then retried with MTP3 + CUDA Graph so the extra speculative and graph reservations are
-included in the fit check.
+model loads with that exact capacity and generates one token with RK4V4E8.
+
+The probe resolves two independent ceilings. It first finds the highest eager explicit-capacity rung
+with CUDA Graph disabled. When MTP is enabled, it then starts from that rung and walks downward until
+it finds the highest exact-capacity profile that also loads and generates with MTP + CUDA Graph. A
+256K eager PASS therefore does not imply a 256K MTP/graph PASS, and the script reports both values.
 
 Do not replace the explicit capacity in this probe with `--kv-capacity auto`. Automatic sizing is
 allowed to resolve below `--max-context`, which is appropriate for interactive use but would create a
 false-positive capacity result here.
 
-Do not publish 192K or 256K as a 2080 Ti 22GB ceiling unless that row passes on the physical card.
-A capacity allocation pass also does not replace long-context retrieval/quality validation.
+Do not publish 192K or 256K as a 2080 Ti 22GB ceiling unless that row passes on the physical card in
+the runtime mode being claimed. A capacity allocation pass also does not replace long-context
+retrieval/quality validation.
+
+## Long-context retrieval quality
+
+Use the token-calibrated quality harness after the desired capacity rung has passed:
+
+```bash
+chmod +x bench/targets/qwen3_6_27b/sm75_long_context_quality.sh
+MAX_CONTEXT=131072 \
+  ./bench/targets/qwen3_6_27b/sm75_long_context_quality.sh MODEL.ninfer
+```
+
+The harness loads one server, uses `/v1/messages/count_tokens` to binary-search filler length to an
+observed token target, places a unique retrieval needle at early/middle/late depths, and requires
+exact-code recall. For an MTP run, `MAX_CONTEXT` should not exceed the MTP + CUDA Graph ceiling found
+by the capacity probe.
+
+If RK4V4E8 + MTP fails retrieval, rerun the same depth with `MTP_DRAFT=0` before attributing the
+failure to compressed KV. If RK4V4E8 MTP0 fails while an INT8 MTP0 control passes at the same depth,
+compressed-KV correctness/quality becomes the leading suspect. This distinction matters because
+capacity, compressed-KV quality and speculative decoding are separate failure domains.
 
 ## Vision
 
@@ -215,8 +239,15 @@ the established KeyBlock=32 static profile instead. Compile-time assertions reje
 specialization whose static allocation exceeds 48KiB or whose static+dynamic allocation exceeds
 64KiB. SM86/SM120 scheduling is unchanged.
 
-Do not widen tiles merely because a newer GPU profile uses more shared memory: change tile geometry
-only after physical-card register/occupancy and throughput measurements show a net win.
+The Q4 optimized draft-head kernel previously inherited `__launch_bounds__(256, 6)`. Six 256-thread
+blocks would require 1,536 resident threads/SM, while Turing SM75 supports at most 1,024. ptxas was
+therefore discarding that minimum-CTA hint. The SM75 path now keeps only the valid 256-thread maximum
+block bound instead of inventing an unmeasured replacement occupancy/register target; non-SM75
+architectures retain the inherited two-argument launch bound.
+
+Do not widen tiles or force a new minimum occupancy merely because a newer GPU profile uses a
+different schedule: change launch geometry only after physical-card register/occupancy and throughput
+measurements show a net win.
 
 ## Correctness gates
 
@@ -234,6 +265,7 @@ Before treating a new tuning change as production-ready:
    benchmark copied across architectures.
 8. Capacity claims must come from an explicit `--kv-capacity N` probe; an automatic-capacity startup
    is not evidence that the requested maximum context fits.
+9. The eager and MTP+CUDA-Graph ceilings must be reported separately when they differ.
 
 The E8 implementation follows the upstream RK4V4E8 lineage: the nearest E8 point is projected before
 integer nibble storage. Half-integral coset coordinates cannot be represented exactly without an
