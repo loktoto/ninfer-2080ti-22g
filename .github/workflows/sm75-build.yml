@@ -61,13 +61,14 @@ jobs:
             ninfer_qwen3_6_runtime_mechanisms_test \
             ninfer_qwen3_6_27b_load_plan_test \
             ninfer_bench_support_test \
-            ninfer_linear_w8_a16_test
+            ninfer_linear_w8_a16_test \
+            ninfer_linear_swiglu_q4_a16_test
 
       - name: Run CPU-safe contract tests
         shell: bash
         run: |
           ctest --test-dir build --output-on-failure \
-            -R 'ninfer_(kv_capacity|serve_options|request_log|qwen3_6_runtime_mechanisms|qwen3_6_27b_load_plan|bench_support|linear_w8_a16)_test'
+            -R 'ninfer_(kv_capacity|serve_options|request_log|qwen3_6_runtime_mechanisms|qwen3_6_27b_load_plan|bench_support|linear_w8_a16|linear_swiglu_q4_a16)_test'
 
       - name: Build SM75 whole-program audit mode
         shell: bash
