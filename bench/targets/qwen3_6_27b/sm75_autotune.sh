@@ -6,7 +6,8 @@ export LC_ALL=C
 #
 # Prefer ninfer_bench when available: it loads the artifact once per profile and performs warmup +
 # measured repetitions inside one Engine. This avoids repeatedly loading a ~19 GiB container for
-# every repetition. A CLI fallback is retained for minimal builds without benchmarks.
+# every repetition. A CLI fallback is retained for minimal builds without benchmarks. Both paths
+# reserve MAX_CONTEXT explicitly so KV-mode comparisons use the same requested memory footprint.
 #
 # Usage:
 #   ./bench/targets/qwen3_6_27b/sm75_autotune.sh MODEL.ninfer [NINFER_BIN]
@@ -200,7 +201,7 @@ run_cli_once() {
   "${BIN}" "${MODEL}" \
     --prompt "${PROMPT}" \
     --max-context "${MAX_CONTEXT}" \
-    --kv-capacity auto \
+    --kv-capacity "${MAX_CONTEXT}" \
     --prefill-chunk "${chunk}" \
     --kv-dtype "${kv}" \
     --device "${DEVICE}" \
