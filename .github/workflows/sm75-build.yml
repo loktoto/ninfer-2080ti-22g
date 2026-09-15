@@ -46,7 +46,10 @@ jobs:
       - name: Build SM75 runtime surface
         shell: bash
         run: |
-          cmake --build build --parallel 2 --target \
+          # gqa_attention_decode.cu instantiates a large SM75 template matrix. Hosted runners
+          # can OOM when nvcc compiles it concurrently with another heavy CUDA TU, so keep this
+          # correctness gate serial. This changes CI peak memory only, not generated runtime code.
+          cmake --build build --parallel 1 --target \
             ninfer \
             ninfer-serve \
             ninfer_bench \
