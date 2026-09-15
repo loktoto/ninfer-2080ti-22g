@@ -37,9 +37,15 @@ jobs:
             -DNINFER_BUILD_APPS=ON \
             -DNINFER_BUILD_BENCHMARKS=OFF
 
-      - name: Build
+      - name: Build SM75 runtime surface
         shell: bash
-        run: cmake --build build --parallel 2
+        run: |
+          cmake --build build --parallel 2 --target \
+            ninfer \
+            ninfer-serve \
+            ninfer_kv_capacity_test \
+            ninfer_serve_options_test \
+            ninfer_qwen3_6_runtime_mechanisms_test
 
       - name: Run CPU-safe contract tests
         shell: bash
