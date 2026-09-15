@@ -1,0 +1,47 @@
+name: SM75 build and contract tests
+
+on:
+  push:
+    branches:
+      - feat/sm75-rk4v4-e8
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  sm75-build:
+    runs-on: ubuntu-24.04
+    container:
+      image: nvidia/cuda:12.9.1-devel-ubuntu24.04
+    steps:
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git cmake ninja-build pkg-config \
+            libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libcurl4-openssl-dev
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SM75
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_ARCHITECTURES=75 \
+            -DBUILD_TESTING=ON \
+            -DNINFER_BUILD_APPS=ON \
+            -DNINFER_BUILD_BENCHMARKS=OFF
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --parallel 2
+
+      - name: Run CPU-safe contract tests
+        shell: bash
+        run: |
+          ctest --test-dir build --output-on-failure \
+            -R 'ninfer_(kv_capacity|serve_options|qwen3_6_runtime_mechanisms)_test'
