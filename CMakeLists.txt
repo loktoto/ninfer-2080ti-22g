@@ -18,6 +18,8 @@ project(ninfer-2080ti-22g LANGUAGES C CXX CUDA)
 option(NINFER_BUILD_APPS "Build the NInfer CLI and server" ON)
 option(BUILD_TESTING "Build NInfer tests" OFF)
 option(NINFER_BUILD_BENCHMARKS "Build NInfer benchmarks" OFF)
+option(NINFER_CUDA_WHOLE_PROGRAM
+  "Disable relocatable CUDA device code for whole-program ptxas optimization" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -73,6 +75,23 @@ find_package(Threads REQUIRED)
 
 # --- Subdirectories ----------------------------------------------------------
 add_subdirectory(src)
+
+# NInfer currently has no cross-translation-unit device calls, device function pointers, dynamic
+# parallelism, or external device/constant definitions. Keep the established RDC build as the
+# default, but expose a controlled A/B mode for SM75 resource audits and WSL2 ptxas qualification.
+# The option is applied after src creates the targets so it overrides their archive defaults without
+# changing the normal build path.
+if(NINFER_CUDA_WHOLE_PROGRAM)
+  foreach(target IN ITEMS ninfer_core ninfer_ops)
+    if(TARGET ${target})
+      set_target_properties(${target} PROPERTIES
+        CUDA_SEPARABLE_COMPILATION OFF
+        CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+    endif()
+  endforeach()
+  message(STATUS "NInfer CUDA whole-program mode enabled (RDC disabled for core/ops)")
+endif()
+
 if(NINFER_BUILD_APPS)
   add_subdirectory(apps)
 endif()
