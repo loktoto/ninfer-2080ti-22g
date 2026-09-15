@@ -86,7 +86,9 @@ chmod +x bench/targets/qwen3_6_27b/sm75_autotune.sh
 When `./build/bench/ninfer_bench` exists, the script uses it by default. Each profile loads the model
 once, performs the warmup and measured repetitions inside one Engine, and writes a structured JSON
 report. This avoids repeatedly reading/uploading the roughly 19GiB artifact for every repetition.
-If the benchmark binary is absent, the script falls back to the slower CLI-per-repetition path.
+If the benchmark binary is absent, the script falls back to the slower CLI-per-repetition path. Both
+paths request the same explicit `MAX_CONTEXT` KV capacity so INT8/RK4V4E8 comparisons do not silently
+measure different memory footprints.
 
 The default sweep compares:
 
@@ -95,8 +97,17 @@ The default sweep compares:
 - ordinary autoregressive decode versus MTP2, MTP3, MTP4 and MTP5
 - repeated greedy 256-token decode runs
 
-It records mean/stddev decode throughput, MTP acceptance and GPU snapshots including clocks, power,
-temperature and memory usage. `summary.tsv` prints the fastest measured profile on that card.
+It records prefill throughput, mean/stddev decode throughput, MTP acceptance and GPU snapshots
+including clocks, power, temperature and memory usage. The benchmark-mode report surfaces three
+profiles rather than collapsing unlike workloads into one number:
+
+- fastest decode profile
+- fastest prefill profile
+- balanced daily profile: retain profiles within 97% of the best decode rate, then select the highest
+  prefill throughput (decode breaks an exact prefill tie)
+
+The balanced selector is intentionally disabled for the CLI fallback because that path uses a short
+text prompt rather than the fixed 2,048-token benchmark corpus; its prefill rate is diagnostic only.
 Override `PREFILL_CHUNKS`, `DRAFTS`, `KV_MODES`, `MAX_CONTEXT`, `MAX_NEW`, `BENCH_PROMPT`, `WARMUP` or
 `REPS` when a wider sweep is required.
 
