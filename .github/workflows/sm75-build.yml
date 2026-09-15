@@ -41,7 +41,7 @@ jobs:
             -DCMAKE_CUDA_ARCHITECTURES=75 \
             -DBUILD_TESTING=ON \
             -DNINFER_BUILD_APPS=ON \
-            -DNINFER_BUILD_BENCHMARKS=OFF
+            -DNINFER_BUILD_BENCHMARKS=ON
 
       - name: Build SM75 runtime surface
         shell: bash
@@ -49,6 +49,7 @@ jobs:
           cmake --build build --parallel 2 --target \
             ninfer \
             ninfer-serve \
+            ninfer_bench \
             ninfer_kv_capacity_test \
             ninfer_serve_options_test \
             ninfer_request_log_test \
