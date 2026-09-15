@@ -27,6 +27,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate SM75 probe scripts
+        shell: bash
+        run: |
+          bash -n bench/targets/qwen3_6_27b/sm75_autotune.sh
+          bash -n bench/targets/qwen3_6_27b/sm75_rk4v4e8_probe.sh
+
       - name: Configure SM75
         shell: bash
         run: |
@@ -45,10 +51,11 @@ jobs:
             ninfer-serve \
             ninfer_kv_capacity_test \
             ninfer_serve_options_test \
-            ninfer_qwen3_6_runtime_mechanisms_test
+            ninfer_qwen3_6_runtime_mechanisms_test \
+            ninfer_bench_support_test
 
       - name: Run CPU-safe contract tests
         shell: bash
         run: |
           ctest --test-dir build --output-on-failure \
-            -R 'ninfer_(kv_capacity|serve_options|qwen3_6_runtime_mechanisms)_test'
+            -R 'ninfer_(kv_capacity|serve_options|qwen3_6_runtime_mechanisms|bench_support)_test'
