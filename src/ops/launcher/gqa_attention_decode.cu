@@ -152,7 +152,15 @@ void launch_tc_partial_i8(const Tensor& q, CacheInput input, const Tensor& pos, 
         } else if (implementation_window <= 2054) {
             launch.template operator()<12, 1, 32, false>();
         } else if (implementation_window <= 8198) {
+#if defined(NINFER_SM75)
+            // Turing exposes at most 64 KiB shared memory per block. The Bc=64 dynamic arena
+            // alone is 64 KiB and the kernel also owns q/p/scale/statics, so that profile cannot
+            // legally launch on SM75. Bc=32 keeps the complete static allocation just below the
+            // 48 KiB conventional per-block limit while preserving the established 12-warp route.
+            launch.template operator()<12, 1, 32, false>();
+#else
             launch.template operator()<12, 1, 64, true>();
+#endif
         } else {
             launch.template operator()<6, 2, 32, false>();
         }
