@@ -86,10 +86,7 @@ struct DFlashConfig {
 inline constexpr float kAttentionScale                   = 0.0625F;
 inline constexpr float kGdnScale                         = 0.08838834764831845F;
 inline constexpr std::uint32_t kPrefillChunkAlignment    = 128;
-// SM75 RK4V4E8/BF16 GQA has verified resource-safe small-T kernels through verify width 8.
-// A seven-token MTP draft therefore fits the target runtime envelope. Higher draft counts require
-// additional SM75 GQA/kernel qualification and remain intentionally disabled for this target.
-inline constexpr std::uint32_t kMaximumMtpDraftTokens    = 7;
+inline constexpr std::uint32_t kMaximumMtpDraftTokens    = 5;
 inline constexpr std::uint32_t kMaximumDFlashDraftTokens = 0;
 inline constexpr std::uint32_t kNativeContext            = 262144;
 
