@@ -38,9 +38,9 @@ Default ladder: 64K, 128K, 192K, 256K.
 
 A row is a capacity PASS only when the probe uses `--max-context N --kv-capacity N`, the model loads, and one token is generated. `--kv-capacity auto` is intentionally not accepted as proof because automatic sizing may resolve below the requested maximum context.
 
-The highest eager-fitting rung is separately retried with MTP + CUDA Graph. Eager fit and MTP/graph fit are different results.
+The probe reports two independent ceilings. It first resolves the highest eager explicit-capacity rung with CUDA Graph disabled. It then starts from that rung and walks downward as needed until it finds the highest explicit-capacity profile that also fits MTP + CUDA Graph. Eager fit and MTP/graph fit are different results.
 
-Do not publish a 192K or 256K ceiling unless that exact row passed on the physical 22GB card.
+Do not publish a 192K or 256K ceiling unless that exact row passed on the physical 22GB card in the runtime mode being claimed.
 
 ## 3. Performance gate — compare identical workloads
 
@@ -75,7 +75,7 @@ A short-prompt prefill result must not be extrapolated to 64K+ ingestion.
 
 ## 4. Quality gate — token-calibrated long-context retrieval
 
-First set `MAX_CONTEXT` no higher than a capacity rung that passed in section 2.
+When testing the default MTP path, set `MAX_CONTEXT` no higher than the MTP + CUDA Graph ceiling from section 2. For an MTP0 control, an eager-fit rung may be used instead.
 
 ```bash
 chmod +x bench/targets/qwen3_6_27b/sm75_long_context_quality.sh
@@ -121,7 +121,7 @@ Do not claim `Vision + 256K + MTP3` from a text-only capacity result.
 A profile can be called validated on RTX 2080 Ti 22GB only when all applicable gates below are recorded from the same physical card:
 
 - exact artifact hash and software/driver environment recorded;
-- explicit capacity rung passes;
+- explicit capacity rung passes in the runtime mode being claimed;
 - benchmark has repeated measurements and no unexplained outlier selected as winner;
 - MTP acceptance is recorded alongside output tok/s;
 - long-context retrieval passes at the intended depth, with MTP0 control available for failures;
