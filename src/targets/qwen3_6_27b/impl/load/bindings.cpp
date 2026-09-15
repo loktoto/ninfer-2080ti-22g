@@ -408,6 +408,38 @@ void validate_draft_ids(const artifact::Binder& binder, artifact::ObjectHandle h
     }
 }
 
+void bind_dflash2_stub(artifact::Binder& binder) {
+    const auto bind = [&](std::string_view name, NumericFormat format,
+                          std::initializer_list<std::uint64_t> shape) {
+        return artifact::bind_tensor(binder, name, format, shape,
+                                     artifact::TensorPlacement::ValidateOnly);
+    };
+
+    (void)bind("dflash2/feature_projection", NumericFormat::W8G32_F16S, {5120, 25600});
+    (void)bind("dflash2/context_norm", NumericFormat::BF16, {5120});
+    for (std::size_t layer = 0; layer < 5; ++layer) {
+        const std::string prefix = "dflash2/layers/" + std::to_string(layer) + "/";
+        (void)bind(prefix + "input_norm", NumericFormat::BF16, {5120});
+        (void)bind(prefix + "attention_conv/base_kernel", NumericFormat::BF16, {2, 2, 5120});
+        (void)bind(prefix + "attention_conv/kernel_projection", NumericFormat::BF16, {1280, 5120});
+        (void)bind(prefix + "attention/query_key_value", NumericFormat::W8G32_F16S, {6144, 5120});
+        (void)bind(prefix + "attention/query_norm", NumericFormat::BF16, {128});
+        (void)bind(prefix + "attention/key_norm", NumericFormat::BF16, {128});
+        (void)bind(prefix + "attention/output", NumericFormat::W8G32_F16S, {5120, 4096});
+        (void)bind(prefix + "post_attention_norm", NumericFormat::BF16, {5120});
+        (void)bind(prefix + "mlp_conv/base_kernel", NumericFormat::BF16, {2, 2, 5120});
+        (void)bind(prefix + "mlp_conv/kernel_projection", NumericFormat::BF16, {1280, 5120});
+        (void)bind(prefix + "mlp/gate_up", NumericFormat::W8G32_F16S, {34816, 5120});
+        (void)bind(prefix + "mlp/down", NumericFormat::W8G32_F16S, {5120, 17408});
+    }
+    (void)bind("dflash2/final_norm", NumericFormat::BF16, {5120});
+    (void)bind("dflash2/candidate_selector/hidden_projection", NumericFormat::BF16, {256, 5120});
+    (void)bind("dflash2/candidate_selector/predecessor_codebook", NumericFormat::BF16,
+               {248320, 256});
+    (void)bind("dflash2/candidate_selector/successor_codebook", NumericFormat::BF16,
+               {248320, 256});
+}
+
 } // namespace
 
 ArtifactLoadPlan bind_artifact(artifact::Binder& binder, WeightsProfile weights_profile,
@@ -484,6 +516,8 @@ ArtifactLoadPlan bind_artifact(artifact::Binder& binder, WeightsProfile weights_
     out.vision_merger_fc2_bias = artifact::bind_tensor(
         binder, "vision/merger/fc2_bias", NumericFormat::BF16, {5120}, vision_placement);
     out.vision_merger_norm = qwen3_6::bind_vision_merger_norm(binder, vision_placement);
+
+    if (binder.has_object("dflash2/feature_projection")) { bind_dflash2_stub(binder); }
 
     load_plan.materialization = binder.finish();
     return load_plan;
