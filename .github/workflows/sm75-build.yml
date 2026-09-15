@@ -34,6 +34,7 @@ jobs:
           bash -n bench/targets/qwen3_6_27b/sm75_rk4v4e8_probe.sh
           bash -n bench/targets/qwen3_6_27b/sm75_long_context_quality.sh
           bash -n bench/targets/qwen3_6_27b/sm75_build_resource_audit.sh
+          bash -n bench/targets/qwen3_6_27b/sm75_perf_acceptance.sh
 
       - name: Configure SM75
         shell: bash
