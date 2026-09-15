@@ -35,6 +35,9 @@ PagedKVCacheLayout plan_cache(LayoutBuilder& builder, std::uint32_t layers, std:
     if (e8_lattice && !packed_k) {
         throw std::invalid_argument("E8 lattice requires packed K4 storage");
     }
+    if (e8_lattice && !rotate_k) {
+        throw std::invalid_argument("E8 lattice requires rotated K/Q storage");
+    }
     if ((packed_k || packed_v) && (head_dim & 1) != 0) {
         throw std::invalid_argument("Packed 4-bit KV requires an even head dimension");
     }
