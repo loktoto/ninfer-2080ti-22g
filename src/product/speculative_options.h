@@ -35,8 +35,10 @@ inline void validate_speculative_cli_options(const SpeculativeOptions& options) 
         }
         return;
     case SpeculativeBackend::Mtp:
-        if (options.draft_tokens == 0 || options.draft_tokens > 5) {
-            throw std::invalid_argument("--spec mtp requires --draft-tokens in [1,5]");
+        // Product parsing admits the largest MTP window qualified by the SM75 27B target. Each
+        // concrete target still enforces its own Variant::maximum_mtp_draft_tokens during planning.
+        if (options.draft_tokens == 0 || options.draft_tokens > 7) {
+            throw std::invalid_argument("--spec mtp requires --draft-tokens in [1,7]");
         }
         return;
     case SpeculativeBackend::DFlash:
