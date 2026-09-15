@@ -2,10 +2,27 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build-sm75-audit}"
-LOG_FILE="${LOG_FILE:-${BUILD_DIR}/sm75-build-audit.log}"
+WHOLE_PROGRAM="${WHOLE_PROGRAM:-0}"
 TARGETS="${TARGETS:-ninfer}"
 CLEAN="${CLEAN:-0}"
+
+case "${WHOLE_PROGRAM}" in
+  0)
+    build_mode="rdc"
+    whole_program_cmake="OFF"
+    ;;
+  1)
+    build_mode="whole-program"
+    whole_program_cmake="ON"
+    ;;
+  *)
+    echo "error: WHOLE_PROGRAM must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
+BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build-sm75-audit-${build_mode}}"
+LOG_FILE="${LOG_FILE:-${BUILD_DIR}/sm75-build-audit.log}"
 
 if ! command -v cmake >/dev/null 2>&1; then
   echo "error: cmake is required" >&2
@@ -24,6 +41,8 @@ mkdir -p "${BUILD_DIR}"
 {
   echo "== SM75 build resource audit =="
   echo "root=${ROOT_DIR}"
+  echo "build_mode=${build_mode}"
+  echo "whole_program=${WHOLE_PROGRAM}"
   echo "build_dir=${BUILD_DIR}"
   echo "targets=${TARGETS}"
   echo "uname=$(uname -a)"
@@ -41,6 +60,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CUDA_ARCHITECTURES=75 \
   -DCMAKE_CUDA_FLAGS="-Xptxas=-v" \
+  -DNINFER_CUDA_WHOLE_PROGRAM="${whole_program_cmake}" \
   -DBUILD_TESTING=OFF \
   -DNINFER_BUILD_APPS=ON \
   -DNINFER_BUILD_BENCHMARKS=ON \
@@ -83,7 +103,7 @@ fi
 
 if grep -Eqi 'ptxas.*(segmentation fault|error 139)|segmentation fault.*ptxas|ptxas fatal' "${LOG_FILE}"; then
   echo "ptxas_crash=detected" | tee -a "${LOG_FILE}"
-  echo "hint: this matches the known SM75/WSL2 -O3 -rdc=true failure class; keep the serial build log and compare a whole-program CUDA build before changing optimization level." | tee -a "${LOG_FILE}"
+  echo "hint: this matches the known SM75/WSL2 -O3 -rdc=true failure class; compare WHOLE_PROGRAM=0 and WHOLE_PROGRAM=1 before changing optimization level." | tee -a "${LOG_FILE}"
 else
   echo "ptxas_crash=not-detected" | tee -a "${LOG_FILE}"
 fi
