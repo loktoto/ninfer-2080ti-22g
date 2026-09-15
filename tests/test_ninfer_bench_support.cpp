@@ -112,12 +112,22 @@ int test_cli_contract() {
         expect(parsed.output == qb::OutputFormat::Json && parsed.output_file == "report.json",
                "output settings");
 
+    const qb::BenchOptions rk4v4e8 = parse_for_test(
+        {"ninfer_bench", "--weights", "model.ninfer", "--kv-dtype", "rk4v4-e8"});
+    failures += expect(rk4v4e8.kv_cache == ninfer::KvCacheStorage::RK4V4E8,
+                       "RK4V4E8 benchmark parser");
+    failures += expect_string(qb::kv_cache_name(ninfer::KvCacheStorage::RK4V4E8), "rk4v4-e8",
+                              "RK4V4E8 benchmark report name");
+
     const auto defaults = qb::expand_tests(qb::BenchOptions{});
     failures +=
         expect(defaults.size() == 2 && defaults[0].label == "pp512" && defaults[1].label == "tg128",
                "default pp/tg matrix");
-    failures += expect(qb::usage_text("ninfer_bench").find("artifact.ninfer") != std::string::npos,
+    const std::string help = qb::usage_text("ninfer_bench");
+    failures += expect(help.find("artifact.ninfer") != std::string::npos,
                        "help names native artifact");
+    failures += expect(help.find("rk4v4-e8") != std::string::npos,
+                       "help lists RK4V4E8 cache mode");
     failures += expect(parse_for_test({"ninfer_bench", "--help"}).help_requested, "help flag");
 
     failures += expect_throws<std::invalid_argument>([] { (void)parse_for_test({"ninfer_bench"}); },

@@ -1,0 +1,87 @@
+name: SM75 build and contract tests
+
+on:
+  pull_request:
+    branches:
+      - master
+
+concurrency:
+  group: sm75-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sm75-build:
+    runs-on: ubuntu-24.04
+    container:
+      image: nvidia/cuda:12.9.1-devel-ubuntu24.04
+    steps:
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git cmake ninja-build pkg-config python3 \
+            libavformat-dev libavcodec-dev libavutil-dev libswscale-dev libcurl4-openssl-dev
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate SM75 probe scripts
+        shell: bash
+        run: |
+          bash -n bench/targets/qwen3_6_27b/sm75_autotune.sh
+          bash -n bench/targets/qwen3_6_27b/sm75_rk4v4e8_probe.sh
+          bash -n bench/targets/qwen3_6_27b/sm75_long_context_quality.sh
+          bash -n bench/targets/qwen3_6_27b/sm75_build_resource_audit.sh
+
+      - name: Configure SM75
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_ARCHITECTURES=75 \
+            -DBUILD_TESTING=ON \
+            -DNINFER_BUILD_APPS=ON \
+            -DNINFER_BUILD_BENCHMARKS=ON
+
+      - name: Build SM75 runtime surface
+        shell: bash
+        run: |
+          # gqa_attention_decode.cu instantiates a large SM75 template matrix. Hosted runners
+          # can OOM when nvcc compiles it concurrently with another heavy CUDA TU, so keep this
+          # correctness gate serial. This changes CI peak memory only, not generated runtime code.
+          cmake --build build --parallel 1 --target \
+            ninfer \
+            ninfer-serve \
+            ninfer_bench \
+            ninfer_kv_capacity_test \
+            ninfer_serve_options_test \
+            ninfer_request_log_test \
+            ninfer_qwen3_6_runtime_mechanisms_test \
+            ninfer_qwen3_6_27b_load_plan_test \
+            ninfer_bench_support_test \
+            ninfer_linear_w8_a16_test \
+            ninfer_linear_pair_w8_a16_test \
+            ninfer_linear_swiglu_q4_a16_test
+
+      - name: Run CPU-safe contract tests
+        shell: bash
+        run: |
+          ctest --test-dir build --output-on-failure \
+            -R 'ninfer_(kv_capacity|serve_options|request_log|qwen3_6_runtime_mechanisms|qwen3_6_27b_load_plan|bench_support|linear_w8_a16|linear_pair_w8_a16|linear_swiglu_q4_a16)_test'
+
+      - name: Build SM75 whole-program audit mode
+        shell: bash
+        run: |
+          # Compile and link the opt-in non-RDC path as a separate configuration. This proves the
+          # target does not depend on cross-TU device linking; physical 2080 Ti A/B measurements
+          # still decide whether whole-program codegen is faster enough to become the default.
+          cmake -S . -B build-whole-program -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_ARCHITECTURES=75 \
+            -DNINFER_CUDA_WHOLE_PROGRAM=ON \
+            -DBUILD_TESTING=OFF \
+            -DNINFER_BUILD_APPS=ON \
+            -DNINFER_BUILD_BENCHMARKS=OFF
+          cmake --build build-whole-program --parallel 1 --target ninfer
