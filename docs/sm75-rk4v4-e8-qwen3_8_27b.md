@@ -15,15 +15,27 @@ cmake --build build --parallel
 
 CUDA 12.8 or newer is required. CUDA 12.9 is the compile-gate baseline for this branch.
 
+## Current Qwen3.8 artifact compatibility
+
+The current registered Qwen3.8-27B NInfer container can include the optional `dflash2/*` payload in
+addition to the text, MTP, Vision and draft-head objects. The SM75 target validates the complete
+DFlash2 descriptor contract when the `dflash2/feature_projection` sentinel is present, but places all
+66 DFlash2 tensors in `ValidateOnly` storage.
+
+That distinction is important on a 22GB card: artifact file size is not the same thing as resident GPU
+weight size. Validate-only DFlash2 objects consume neither the device weight arena nor H2D bandwidth.
+They remain schema-checked, so an incomplete or shape/format-incompatible DFlash2 payload is rejected
+instead of being silently ignored.
+
 ## Recommended interactive profile
 
-Start with 128K and let the allocator resolve the largest page-aligned KV capacity that fits while
-retaining runtime headroom:
+Use 64K as the conservative daily starting point, then enable 128K when the workload needs it. Let
+the allocator resolve the largest page-aligned KV capacity that fits while retaining runtime headroom:
 
 ```bash
 ./build/apps/ninfer MODEL.ninfer \
   --prompt "Hello" \
-  --max-context 131072 \
+  --max-context 65536 \
   --kv-capacity auto \
   --prefill-chunk 1024 \
   --kv-dtype rk4v4-e8 \
@@ -37,12 +49,36 @@ Why this profile:
 - `rk4v4-e8` halves the K/V code-plane width relative to INT8 while retaining FP16 group-64 scales.
 - K and Q are Hadamard-rotated into the same domain; K is E8-projected and stored as packed signed
   4-bit codes. V is rotated and stored as packed signed 4-bit codes; output is inverse-rotated.
-- SM75 does not require native INT4 MMA. Packed codes are unpacked into the existing INT8 shared
-  tile, so QK continues through Turing INT8 Tensor Cores.
-- MTP3 is the existing 2080 Ti throughput sweet-spot baseline. It costs additional state, so a
-  context that fits in eager mode can fail after CUDA-graph/MTP reservations are enabled.
-- `--kv-capacity auto` is preferred on 22GB because driver/display/WDDM and optional Vision state can
-  change the actually available memory.
+- Packed codes are expanded into the existing INT8 shared-memory tiles, so QK continues through
+  Turing INT8 Tensor Cores rather than depending on Ada/Blackwell-only kernel mechanisms.
+- The existing public 2080 Ti baseline found MTP3 to be a strong throughput point, but the best draft
+  window is workload- and kernel-dependent. Treat MTP3 as a fallback, not a permanent tuning law.
+- `--kv-capacity auto` is preferred on 22GB because driver/display allocations, CUDA Graph state,
+  MTP state and optional Vision state change the actually available memory.
+
+## Physical-card autotune
+
+Do not copy the best MTP window or prefill tile from a 4090 profile. Turing has a different occupancy,
+register and shared-memory balance. Run the included sweep on the physical 2080 Ti:
+
+```bash
+chmod +x bench/targets/qwen3_6_27b/sm75_autotune.sh
+./bench/targets/qwen3_6_27b/sm75_autotune.sh MODEL.ninfer
+```
+
+The default sweep compares:
+
+- INT8 versus RK4V4E8 KV
+- prefill chunks 512 and 1024
+- ordinary autoregressive decode versus MTP2, MTP3 and MTP4
+- repeated greedy 256-token decode runs
+
+It records decode throughput, MTP acceptance and GPU snapshots including clocks, power, temperature
+and memory usage. `summary.tsv` prints the fastest measured profile on that card. Override
+`PREFILL_CHUNKS`, `DRAFTS`, `KV_MODES`, `MAX_CONTEXT`, `MAX_NEW`, `WARMUP` or `REPS` when a wider sweep
+is required.
+
+The autotune sweep is a throughput test, not a long-context capacity proof.
 
 ## Context validation
 
@@ -64,9 +100,11 @@ Default fit ladder:
 4. 262,144
 
 Each eager row is marked PASS only after the model loads and generates one token with RK4V4E8 at
-that `--max-context`. The highest eager-fitting size is then retried with MTP3 + CUDA graph.
+that `--max-context`. The highest eager-fitting size is then retried with MTP3 + CUDA Graph so the
+extra speculative and graph reservations are included in the fit check.
 
 Do not publish 192K or 256K as a 2080 Ti 22GB ceiling unless that row passes on the physical card.
+A capacity allocation pass also does not replace long-context retrieval/quality validation.
 
 ## Vision
 
@@ -79,35 +117,50 @@ requests confirm sufficient headroom.
 
 For comparisons, hold all of the following fixed:
 
-- artifact and weight format
+- exact artifact identity and weight format
 - CUDA driver/toolkit
-- GPU power/clock policy
+- GPU power/clock policy and thermal state
 - `prefill_chunk`
 - context depth
 - MTP draft window and proposal head
-- CUDA graph enabled/disabled state
+- CUDA Graph enabled/disabled state
+- sampling mode and generated-token count
 
 Measure at least:
 
 - cold prefill tokens/s at 2K, 8K, 32K and the intended long-context depth
 - decode tokens/s at 2K, 32K, 64K, 128K and the highest validated context
-- MTP acceptance rate and output tokens/s
+- MTP acceptance rate, output tokens/s and engine tokens/s
 - resolved KV capacity, KV payload bytes, allocator slack and peak workspace
+- GPU clocks, power and temperature during each comparable run
 
-Compare RK4V4E8 against INT8 rather than against a differently configured baseline. The expected
-benefit at long context is lower KV bandwidth and a larger capacity envelope; short-context speed can
-be neutral or slightly worse because packed-code unpack and rotations add ALU work.
+`ninfer_bench` accepts `--kv-dtype rk4v4-e8`, so structured table/JSON/CSV benchmark output can label
+the compressed format correctly. Compare RK4V4E8 against INT8 under otherwise identical settings.
+The expected long-context benefit is lower KV bandwidth and a larger capacity envelope; short-context
+speed can be neutral or slightly worse because packed-code unpack and rotations add ALU work.
+
+## SM75 resource constraints
+
+Turing compute capability 7.5 has 32 resident warps per SM and a 64KB maximum shared-memory carveout.
+The current SM75 prefill path deliberately uses a 32x32 tile with 8 warps and 44,288 bytes of shared
+scratch, keeping the static allocation below the conventional 48KB per-block threshold. Do not widen
+the tile merely because a newer GPU profile uses more shared memory: change tile geometry only after
+physical-card register/occupancy and throughput measurements show a net win.
 
 ## Correctness gates
 
 Before treating a new tuning change as production-ready:
 
-1. SM75 compile gate must pass.
-2. Runtime layout and serve-option contract tests must pass.
+1. SM75 CUDA compile gate must pass.
+2. Runtime layout, serve-option and benchmark parser contract tests must pass.
 3. BF16/INT8 existing paths must remain unchanged in dispatch.
-4. RK4V4E8 cache append and cached-attention results must be checked against a quantized reference
+4. Optional DFlash2 payload must remain validate-only on this SM75 profile unless a separately scoped
+   implementation deliberately enables that backend.
+5. RK4V4E8 cache append and cached-attention results must be checked against a quantized reference
    envelope on a CUDA-capable runner.
-5. Long-context retrieval and generation must be checked on the physical 2080 Ti 22GB.
+6. Long-context retrieval and generation must be checked on the physical RTX 2080 Ti 22GB.
+7. A claimed best MTP/prefill profile must come from the physical-card autotune results, not a 4090
+   benchmark copied across architectures.
 
 The E8 implementation follows the upstream RK4V4E8 lineage: the nearest E8 point is projected before
 integer nibble storage. Half-integral coset coordinates cannot be represented exactly without an
