@@ -159,7 +159,7 @@ tests = report.get("tests", [])
 if len(tests) != 1:
     raise SystemExit(f"expected one benchmark test in {path}, got {len(tests)}")
 test = tests[0]
-prefill = test.get("prefill_prompt_tok_s_mean")
+prefill = test.get("prefill_tok_s_mean")
 decode = test.get("decode_output_tok_s_mean")
 stddev = test.get("decode_output_tok_s_stddev")
 spec = test.get("speculative", {})
