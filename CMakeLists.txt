@@ -14,6 +14,10 @@ endif()
 
 project(ninfer-2080ti-22g LANGUAGES C CXX CUDA)
 
+if(WIN32)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
 # --- Global settings ---------------------------------------------------------
 option(NINFER_BUILD_APPS "Build the NInfer CLI and server" ON)
 option(BUILD_TESTING "Build NInfer tests" OFF)
@@ -63,6 +67,10 @@ if(NINFER_BUILD_APPS OR BUILD_TESTING)
 endif()
 
 find_package(CUDAToolkit REQUIRED)
+
+# FFmpeg has no official CMake package target. Native Windows builds use
+# pkgconf + vcpkg; scripts/build-windows-sm75.ps1 wires PKG_CONFIG_PATH and
+# PKG_CONFIG_EXECUTABLE automatically.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
   libavformat>=60 libavcodec>=60 libavutil>=58 libswscale>=7)
