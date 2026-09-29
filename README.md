@@ -76,7 +76,7 @@ Measured on NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_75`, 22 GB VRAM mod, CUDA 
 
 ## Requirements
 
-- **OS**: 64-bit Linux (or WSL2).
+- **OS**: 64-bit Linux, WSL2, or native Windows 10/11. Native Windows instructions: [docs/windows-sm75.md](docs/windows-sm75.md).
 - **GPU**: NVIDIA GPU with Turing `sm_75` (RTX 2080 Ti 22GB), Ampere `sm_86`, or Blackwell `sm_120a`.
 - **CUDA**: CUDA Toolkit >= 12.8 and compatible NVIDIA driver.
 - **Build Tools**: CMake >= 3.28, Ninja, C++20 compiler (GCC >= 11 or Clang >= 14), `pkg-config`.
@@ -87,6 +87,21 @@ Measured on NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_75`, 22 GB VRAM mod, CUDA 
 ---
 
 ## Build
+
+### Native Windows / RTX 2080 Ti (SM75)
+
+On the `windows-native-sm75` branch:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-windows-sm75.ps1
+```
+
+This bootstraps vcpkg dependencies, configures MSVC + CUDA for `sm_75`, and builds
+`ninfer.exe` plus `ninfer-serve.exe`. See [docs/windows-sm75.md](docs/windows-sm75.md)
+for prerequisites and the hardware smoke-test sequence.
+
+### Linux / WSL2
 
 ```bash
 git clone https://github.com/mr-september/ninfer-2080ti-22g.git
