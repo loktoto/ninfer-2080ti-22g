@@ -3,7 +3,7 @@ param(
     [string]$BuildDir = "build-windows-sm75",
     [ValidateSet("Release","RelWithDebInfo","Debug")]
     [string]$Config = "Release",
-    [string]$VcpkgRoot = $env:VCPKG_ROOT,
+    [string]$VcpkgRoot = "",
     [switch]$SkipDependencies,
     [switch]$Clean
 )
@@ -62,7 +62,12 @@ if (-not (Get-Command nvcc.exe -ErrorAction SilentlyContinue)) {
 }
 Require-Command nvcc.exe | Out-Null
 
-if (-not $VcpkgRoot) { $VcpkgRoot = Join-Path $RepoRoot ".deps\vcpkg" }
+if (-not $VcpkgRoot) {
+    # Do not implicitly trust VCPKG_ROOT from a Visual Studio developer shell:
+    # newer VS images expose an integrated vcpkg tree that may be manifest-only
+    # and is not a writable classic-mode checkout.
+    $VcpkgRoot = Join-Path $RepoRoot ".deps\vcpkg"
+}
 if (-not (Test-Path (Join-Path $VcpkgRoot ".git"))) {
     Write-Host "Bootstrapping vcpkg at $VcpkgRoot ..."
     New-Item -ItemType Directory -Force -Path (Split-Path $VcpkgRoot -Parent) | Out-Null
