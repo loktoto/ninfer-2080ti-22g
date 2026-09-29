@@ -76,7 +76,7 @@ if (-not (Test-Path $vcpkgExe)) {
 
 if (-not $SkipDependencies) {
     Write-Host "Installing Windows dependencies (ffmpeg, curl, pkgconf) ..."
-    & $vcpkgExe install ffmpeg:x64-windows curl:x64-windows pkgconf:x64-windows
+    & $vcpkgExe install "ffmpeg[avcodec,avformat,swscale]:x64-windows" curl:x64-windows pkgconf:x64-windows
 }
 
 $Installed = Join-Path $VcpkgRoot "installed\x64-windows"
