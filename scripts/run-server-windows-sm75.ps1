@@ -21,7 +21,12 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Exe = Join-Path $RepoRoot "$InstallDir\bin\ninfer-serve.exe"
+$PackagedExe = Join-Path $RepoRoot "bin\ninfer-serve.exe"
+if (Test-Path $PackagedExe) {
+    $Exe = $PackagedExe
+} else {
+    $Exe = Join-Path $RepoRoot "$InstallDir\bin\ninfer-serve.exe"
+}
 if (-not (Test-Path $Exe)) { throw "ninfer-serve.exe not found: $Exe" }
 $ModelPath = (Resolve-Path $Model -ErrorAction Stop).Path
 
@@ -46,9 +51,6 @@ $Args = @(
     "--log-stats-interval-ms", "5000"
 )
 
-if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
-    $Args += @("--api-key", $ApiKey)
-}
 if ($EnableMtp) {
     $Args += @("--spec", "mtp", "--draft-tokens", $DraftTokens.ToString(), "--lm-head-draft")
 }
@@ -64,5 +66,21 @@ Write-Host "  MTP:         $($EnableMtp.IsPresent)"
 Write-Host "  Vision:      $($Vision.IsPresent)"
 Write-Host "  Request log: $RequestLog"
 
-& $Exe @Args
-exit $LASTEXITCODE
+$PreviousApiKey = $env:NINFER_API_KEY
+try {
+    if (-not [string]::IsNullOrWhiteSpace($ApiKey)) {
+        $env:NINFER_API_KEY = $ApiKey
+    } elseif (Test-Path Env:NINFER_API_KEY) {
+        Remove-Item Env:NINFER_API_KEY
+    }
+
+    & $Exe @Args
+    $ExitCode = $LASTEXITCODE
+} finally {
+    if ($null -eq $PreviousApiKey) {
+        Remove-Item Env:NINFER_API_KEY -ErrorAction SilentlyContinue
+    } else {
+        $env:NINFER_API_KEY = $PreviousApiKey
+    }
+}
+exit $ExitCode
