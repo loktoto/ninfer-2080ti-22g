@@ -69,6 +69,10 @@ jobs:
         shell: pwsh
         run: .\scripts\package-windows-sm75.ps1
 
+      - name: Verify release package integrity
+        shell: pwsh
+        run: .\scripts\verify-package-windows-sm75.ps1
+
       - name: Publish GitHub Release
         shell: pwsh
         env:
