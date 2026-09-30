@@ -1,0 +1,83 @@
+name: Release Windows SM75
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (example: windows-sm75-v0.1.0)"
+        required: true
+        type: string
+      hardware_validated:
+        description: "I completed the documented RTX 2080 Ti 22GB hardware acceptance sequence"
+        required: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    steps:
+      - name: Require hardware acceptance
+        shell: pwsh
+        run: |
+          if ("${{ inputs.hardware_validated }}" -ne "true") {
+            throw "Release blocked: physical RTX 2080 Ti hardware acceptance was not confirmed."
+          }
+          if ("${{ inputs.tag }}" -notmatch "^windows-sm75-v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$") {
+            throw "Invalid release tag. Expected windows-sm75-vMAJOR.MINOR.PATCH."
+          }
+
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Activate MSVC 2022
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Install CUDA 13.1 toolkit
+        uses: ggml-org/llama.cpp/.github/actions/windows-setup-cuda@e904318a2d3e2382e78c98b4353c5dd569c079f6
+        with:
+          cuda_version: "13.1"
+          cuda_arch: "75"
+
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja --no-progress -y
+
+      - name: Cache vcpkg build products
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .deps/vcpkg/downloads
+            .deps/vcpkg/installed
+            ~/AppData/Local/vcpkg/archives
+          key: vcpkg-sm75-${{ runner.os }}-b3ae22aef2b857af6e80d756c13f15db12be4e8a
+
+      - name: Build production runtime
+        shell: pwsh
+        run: .\scripts\build-windows-sm75.ps1 -Clean
+
+      - name: Verify executable startup
+        shell: pwsh
+        run: .\scripts\verify-windows-sm75.ps1
+
+      - name: Package release
+        shell: pwsh
+        run: .\scripts\package-windows-sm75.ps1
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          gh release create $tag dist/*.zip dist/*.sha256 `
+            --target "$env:GITHUB_SHA" `
+            --title "NInfer Windows SM75 $tag" `
+            --notes "Native Windows RTX 2080 Ti / Turing SM75 production package. Hardware acceptance was explicitly confirmed before publication."
