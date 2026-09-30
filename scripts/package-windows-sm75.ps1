@@ -21,6 +21,7 @@ $ZipPath = Join-Path $DistPath "$PackageName.zip"
 
 if (Test-Path $StagePath) { Remove-Item -Recurse -Force $StagePath }
 if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
+if (Test-Path "$ZipPath.sha256") { Remove-Item -Force "$ZipPath.sha256" }
 New-Item -ItemType Directory -Force -Path $DistPath | Out-Null
 Copy-Item $InstallPath $StagePath -Recurse -Force
 
@@ -50,17 +51,30 @@ if ($nvcc) {
     }
 }
 
+$vcpkgCommit = $null
+$vcpkgRoot = Join-Path $RepoRoot ".deps\vcpkg"
+if (Test-Path (Join-Path $vcpkgRoot ".git")) {
+    $candidate = (& git.exe -C $vcpkgRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -eq 0 -and $candidate) { $vcpkgCommit = $candidate }
+}
+
+$cmakeVersion = ((& cmake.exe --version | Select-Object -First 1) -replace "^cmake version\s+","").Trim()
+if ($LASTEXITCODE -ne 0 -or -not $cmakeVersion) { throw "Unable to resolve CMake version." }
+
 $manifest = [ordered]@{
     artifact_type = "ninfer-windows-sm75-runtime"
-    schema_version = 1
+    schema_version = 2
     git_sha = $gitSha
     cuda_arch = "sm_75"
     target_gpu = "NVIDIA RTX 2080 Ti / Turing TU102"
     configuration = "Release"
     cuda_toolkit = $cudaVersion
-    created_utc = [DateTime]::UtcNow.ToString("o")
+    vcpkg_commit = $vcpkgCommit
+    msvc_toolset = $env:VCToolsVersion
+    cmake = $cmakeVersion
     powershell = $PSVersionTable.PSVersion.ToString()
-    cmake = ((& cmake.exe --version | Select-Object -First 1) -replace "^cmake version\s+","").Trim()
+    windows = [Environment]::OSVersion.VersionString
+    created_utc = [DateTime]::UtcNow.ToString("o")
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $StagePath "BUILD-MANIFEST.json") -Encoding UTF8
 
@@ -82,3 +96,4 @@ Set-Content "$ZipPath.sha256" "$zipHash  $([IO.Path]::GetFileName($ZipPath))" -E
 Write-Host "Package created:"
 Write-Host "  $ZipPath"
 Write-Host "  $ZipPath.sha256"
+Write-Host "  Manifest schema: $($manifest.schema_version)"
