@@ -30,6 +30,17 @@ Copy-Item (Join-Path $RepoRoot "README.md") (Join-Path $StagePath "README.md") -
 Copy-Item (Join-Path $RepoRoot "LICENSE") (Join-Path $StagePath "LICENSE") -Force
 Copy-Item (Join-Path $RepoRoot "docs\windows-sm75.md") (Join-Path $DocsDir "windows-sm75.md") -Force
 
+$RuntimeScriptsDir = Join-Path $StagePath "scripts"
+New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
+@(
+    "run-server-windows-sm75.ps1",
+    "healthcheck-windows-sm75.ps1",
+    "smoke-test-windows-sm75.ps1",
+    "verify-windows-sm75.ps1"
+) | ForEach-Object {
+    Copy-Item (Join-Path $RepoRoot "scripts\$_") (Join-Path $RuntimeScriptsDir $_) -Force
+}
+
 $cudaVersion = $null
 $nvcc = Get-Command nvcc.exe -ErrorAction SilentlyContinue
 if ($nvcc) {
@@ -48,6 +59,8 @@ $manifest = [ordered]@{
     configuration = "Release"
     cuda_toolkit = $cudaVersion
     created_utc = [DateTime]::UtcNow.ToString("o")
+    powershell = $PSVersionTable.PSVersion.ToString()
+    cmake = ((& cmake.exe --version | Select-Object -First 1) -replace "^cmake version\s+","").Trim()
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $StagePath "BUILD-MANIFEST.json") -Encoding UTF8
 
