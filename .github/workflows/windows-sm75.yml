@@ -1,4 +1,4 @@
-name: Windows SM75 compile
+name: Windows SM75 production build
 
 on:
   push:
@@ -6,15 +6,22 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-sm75-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Activate MSVC
+      - name: Activate MSVC 2022
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -29,6 +36,15 @@ jobs:
         shell: pwsh
         run: choco install ninja --no-progress -y
 
+      - name: Cache vcpkg build products
+        uses: actions/cache@v4
+        with:
+          path: |
+            .deps/vcpkg/downloads
+            .deps/vcpkg/installed
+            ~/AppData/Local/vcpkg/archives
+          key: vcpkg-sm75-${{ runner.os }}-b3ae22aef2b857af6e80d756c13f15db12be4e8a
+
       - name: Toolchain versions
         shell: pwsh
         run: |
@@ -37,14 +53,24 @@ jobs:
           cmake.exe --version
           ninja.exe --version
 
-      - name: Configure and compile native SM75
+      - name: Build and stage native SM75 runtime
         shell: pwsh
         run: .\scripts\build-windows-sm75.ps1 -Clean
 
-      - name: Upload Windows binaries
-        if: success()
+      - name: Verify packaged binaries start
+        shell: pwsh
+        run: .\scripts\verify-windows-sm75.ps1
+
+      - name: Package release artifact
+        shell: pwsh
+        run: .\scripts\package-windows-sm75.ps1
+
+      - name: Upload production package
         uses: actions/upload-artifact@v4
         with:
-          name: ninfer-windows-sm75
-          path: build-windows-sm75/apps/**
+          name: ninfer-windows-sm75-${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
           if-no-files-found: error
+          retention-days: 14
