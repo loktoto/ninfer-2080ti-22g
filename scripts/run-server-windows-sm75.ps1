@@ -32,8 +32,14 @@ if (-not (Test-Path $Exe)) { throw "ninfer-serve.exe not found: $Exe" }
 $ModelPath = (Resolve-Path $Model -ErrorAction Stop).Path
 
 $Loopback = @("127.0.0.1","localhost","::1")
-if ($Loopback -notcontains $HostAddress -and [string]::IsNullOrWhiteSpace($ApiKey)) {
-    throw "Refusing non-loopback bind without an API key. Set NINFER_API_KEY or pass -ApiKey."
+if ($Loopback -notcontains $HostAddress) {
+    if ([string]::IsNullOrWhiteSpace($ApiKey)) {
+        throw "Refusing non-loopback bind without an API key. Set NINFER_API_KEY or pass -ApiKey."
+    }
+    if (-not $AllowInsecureRemote) {
+        throw "Refusing plain-HTTP non-loopback bind. Use a TLS/VPN/SSH tunnel, or explicitly pass -AllowInsecureRemote with an API key."
+    }
+    Write-Warning "Remote NInfer traffic is plain HTTP. Use only on a trusted network or behind an encrypted tunnel/reverse proxy."
 }
 
 $LogDir = Join-Path $RepoRoot "logs"
