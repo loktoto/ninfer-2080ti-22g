@@ -90,16 +90,29 @@ Measured on NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_75`, 22 GB VRAM mod, CUDA 
 
 ### Native Windows / RTX 2080 Ti (SM75)
 
-On the `windows-native-sm75` branch:
+Use Visual Studio 2022 and the production Windows branch:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-windows-sm75.ps1
+.\scripts\build-windows-sm75.ps1 -Clean
+.\scripts\verify-windows-sm75.ps1
+.\scripts\package-windows-sm75.ps1
 ```
 
-This bootstraps vcpkg dependencies, configures MSVC + CUDA for `sm_75`, and builds
-`ninfer.exe` plus `ninfer-serve.exe`. See [docs/windows-sm75.md](docs/windows-sm75.md)
-for prerequisites and the hardware smoke-test sequence.
+The build is pinned to a tested vcpkg revision, stages a self-contained application directory under
+`out\windows-sm75`, verifies that both executables start with their packaged DLLs, and emits a
+checksummed ZIP in `dist\`.
+
+For a conservative Qwen3.8-27B server baseline:
+
+```powershell
+$env:NINFER_API_KEY = "replace-with-a-local-secret"
+.\scripts\run-server-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
+.\scripts\healthcheck-windows-sm75.ps1
+```
+
+See [docs/windows-sm75.md](docs/windows-sm75.md) for the supported toolchain, packaging contract,
+security defaults, and the RTX 2080 Ti hardware acceptance sequence.
 
 ### Linux / WSL2
 
