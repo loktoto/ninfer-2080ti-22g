@@ -35,6 +35,30 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+#ifdef _WIN32
+class WinSockRuntime final {
+public:
+    WinSockRuntime() {
+        WSADATA data{};
+        const int rc = ::WSAStartup(MAKEWORD(2, 2), &data);
+        if (rc != 0) {
+            throw Error(ErrorKind::RemoteUnavailable,
+                        "failed to initialize WinSock: " + std::to_string(rc));
+        }
+    }
+
+    ~WinSockRuntime() { ::WSACleanup(); }
+
+    WinSockRuntime(const WinSockRuntime&)            = delete;
+    WinSockRuntime& operator=(const WinSockRuntime&) = delete;
+};
+
+void ensure_winsock() {
+    static const WinSockRuntime runtime;
+    (void)runtime;
+}
+#endif
+
 void check_control(const Policy& policy) {
     if (policy.is_cancelled && policy.is_cancelled()) {
         throw Error(ErrorKind::Cancelled, "media acquisition was cancelled");
@@ -161,6 +185,9 @@ std::string gai_error_message(int code) {
 }
 
 std::string resolve_public(const UrlParts& url, bool allow_private) {
+#ifdef _WIN32
+    ensure_winsock();
+#endif
     addrinfo hints{};
     hints.ai_family   = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
