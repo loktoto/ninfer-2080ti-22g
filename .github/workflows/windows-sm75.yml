@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-sm75-${{ github.workflow }}-${{ github.ref }}
+  group: windows-sm75-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
