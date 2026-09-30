@@ -65,6 +65,10 @@ jobs:
         shell: pwsh
         run: .\scripts\package-windows-sm75.ps1
 
+      - name: Verify release package integrity
+        shell: pwsh
+        run: .\scripts\verify-package-windows-sm75.ps1
+
       - name: Upload production package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
