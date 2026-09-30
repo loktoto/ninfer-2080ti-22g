@@ -38,6 +38,21 @@ try {
     if ($Manifest.schema_version -ne 2) { throw "Unsupported manifest schema: $($Manifest.schema_version)" }
     if ($Manifest.cuda_arch -ne "sm_75") { throw "Unexpected CUDA architecture: $($Manifest.cuda_arch)" }
     if ($Manifest.artifact_type -ne "ninfer-windows-sm75-runtime") { throw "Unexpected artifact type." }
+    if ([string]::IsNullOrWhiteSpace([string]$Manifest.artifact_channel)) {
+        throw "Build manifest is missing artifact_channel."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Manifest.artifact_lock_sha256)) {
+        throw "Build manifest is missing artifact_lock_sha256."
+    }
+
+    $LockPath = Join-Path $Stage.FullName "config\windows-sm75-artifacts.json"
+    if (-not (Test-Path $LockPath -PathType Leaf)) {
+        throw "Pinned artifact lock is missing from the package."
+    }
+    $ActualLockHash = (Get-FileHash $LockPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($ActualLockHash -ne ([string]$Manifest.artifact_lock_sha256).ToLowerInvariant()) {
+        throw "Pinned artifact lock hash does not match BUILD-MANIFEST.json."
+    }
 
     foreach ($Line in Get-Content $SumsPath) {
         if ([string]::IsNullOrWhiteSpace($Line)) { continue }
@@ -56,7 +71,10 @@ try {
         "scripts\run-server-windows-sm75.ps1",
         "scripts\healthcheck-windows-sm75.ps1",
         "scripts\smoke-test-windows-sm75.ps1",
-        "scripts\verify-windows-sm75.ps1"
+        "scripts\acceptance-windows-sm75.ps1",
+        "scripts\download-qwen38-windows-sm75.ps1",
+        "scripts\verify-windows-sm75.ps1",
+        "config\windows-sm75-artifacts.json"
     )) {
         if (-not (Test-Path (Join-Path $Stage.FullName $Required) -PathType Leaf)) {
             throw "Required production package file is missing: $Required"

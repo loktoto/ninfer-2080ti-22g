@@ -9,7 +9,8 @@ The deliverable is a staged runtime plus a checksummed ZIP; WSL2 is not required
 - NVIDIA RTX 2080 Ti / TU102 (`sm_75`), including 22GB-mod cards
 - Visual Studio 2022 Build Tools (v143) with Desktop development with C++ and Windows SDK
 - CUDA Toolkit 12.8 or newer; CI validates CUDA 13.1 with VS2022
-- CMake 3.28+, Ninja, Git, PowerShell 7 recommended
+- CMake 3.28+, Ninja, Git
+- Windows PowerShell 5.1+ or PowerShell 7 (both are CI-checked for packaged scripts)
 
 The build script intentionally selects Visual Studio 2022. CUDA 13.1 rejects newer unsupported
 MSVC toolsets; the production path does not use `-allow-unsupported-compiler`.
@@ -35,6 +36,34 @@ For an already-provisioned dependency tree:
 
 ```powershell
 .\scripts\build-windows-sm75.ps1 -SkipDependencies
+```
+
+## Pinned Qwen3.8 production artifact
+
+Do **not** use an unpinned latest artifact. This branch implements the NInfer v2 artifact contract;
+upstream artifact v3 is a different framing/schema migration and is rejected with a targeted error.
+
+The production lock is `config/windows-sm75-artifacts.json`:
+
+```text
+repository  neroued/Qwen3.8-27B-NInfer
+revision    3526913004b1cf552cb57b88d6a5c6f5e4a89a70
+filename    qwen3_8_27b.ninfer
+bytes       18,210,531,328
+container   v2
+sha256      eec39564993d6e9c7d5e383382a760f093465c9d163ec9a1bd6b80199514bf3e
+```
+
+Download and verify in one step:
+
+```powershell
+.\scripts\download-qwen38-windows-sm75.ps1 -ModelDir "D:\AI\models\qwen"
+```
+
+To verify an existing file without downloading:
+
+```powershell
+.\scripts\download-qwen38-windows-sm75.ps1 -ModelDir "D:\AI\models\qwen" -VerifyOnly
 ```
 
 ## Model-free binary verification
@@ -68,7 +97,10 @@ dist/
    │  ├─ run-server-windows-sm75.ps1
    │  ├─ healthcheck-windows-sm75.ps1
    │  ├─ smoke-test-windows-sm75.ps1
+   │  ├─ acceptance-windows-sm75.ps1
+   │  ├─ download-qwen38-windows-sm75.ps1
    │  └─ verify-windows-sm75.ps1
+   ├─ config/windows-sm75-artifacts.json
    ├─ BUILD-MANIFEST.json
    ├─ SHA256SUMS.txt
    ├─ README.md
@@ -102,7 +134,9 @@ MTP              disabled
 Vision           disabled
 ```
 
-It refuses a non-loopback bind unless an API key is configured. The production launcher passes
+It refuses a non-loopback bind unless an API key is configured **and** `-AllowInsecureRemote` is
+passed explicitly. NInfer's built-in listener is plain HTTP; for real remote access use a TLS
+reverse proxy, VPN, or SSH tunnel instead of exposing it directly. The production launcher passes
 the secret through the `NINFER_API_KEY` process environment rather than `--api-key`, so the
 credential is not exposed in the child process command line. The CLI flag remains supported for
 backwards compatibility.
@@ -134,6 +168,16 @@ uses `NINFER_API_KEY`, or pass `-ApiKey` explicitly.
 
 ## Hardware acceptance sequence
 
+Run the automated acceptance harness first:
+
+```powershell
+.\scripts\acceptance-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
+```
+
+It performs the SM75/VRAM preflight, 8K smoke test, token-counted long-prefill probes at 8K/32K/64K,
+OpenAI tool-call path validation, and deterministic MTP0/MTP3 parity. It writes a JSON evidence
+record plus server diagnostics under `acceptance\`.
+
 Native compile success is not proof of CUDA-kernel correctness. Final acceptance on the physical
 RTX 2080 Ti should proceed in this order:
 
@@ -145,8 +189,10 @@ RTX 2080 Ti should proceed in this order:
 6. validate OpenAI tool calls through `/v1/chat/completions`;
 7. validate Vision last.
 
-Do not claim 128K production support until the exact Windows build completes a representative
-long-context run on the 22GB card without OOM, numerical failure, or unacceptable latency.
+Do not claim 128K production support until the exact Windows package completes a representative
+long-context run on the 22GB card without OOM, numerical failure, or unacceptable latency. The
+production baseline remains 8K; 32K and 64K become supported only after the acceptance evidence
+exists for the physical card.
 
 ## CI contract
 

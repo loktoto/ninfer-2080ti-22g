@@ -12,9 +12,10 @@ param(
     [int]$MaxConcurrency = 1,
     [string]$ApiKey = $env:NINFER_API_KEY,
     [switch]$EnableMtp,
-    [ValidateRange(1,8)]
+    [ValidateRange(1,5)]
     [int]$DraftTokens = 3,
-    [switch]$Vision
+    [switch]$Vision,
+    [switch]$AllowInsecureRemote
 )
 
 $ErrorActionPreference = "Stop"

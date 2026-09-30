@@ -8,6 +8,17 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
+function Get-PackageRelativePath([string]$BasePath, [string]$FilePath) {
+    $BaseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd([char[]]"\/")
+    $FileFull = [IO.Path]::GetFullPath($FilePath)
+    $Prefix = $BaseFull + [IO.Path]::DirectorySeparatorChar
+    if (-not $FileFull.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Package file is outside the staging root: $FilePath"
+    }
+    return $FileFull.Substring($Prefix.Length).Replace("\","/")
+}
+
 $InstallPath = Join-Path $RepoRoot $InstallDir
 $DistPath = Join-Path $RepoRoot $DistDir
 if (-not (Test-Path $InstallPath)) { throw "Install tree not found: $InstallPath" }
@@ -31,12 +42,18 @@ Copy-Item (Join-Path $RepoRoot "README.md") (Join-Path $StagePath "README.md") -
 Copy-Item (Join-Path $RepoRoot "LICENSE") (Join-Path $StagePath "LICENSE") -Force
 Copy-Item (Join-Path $RepoRoot "docs\windows-sm75.md") (Join-Path $DocsDir "windows-sm75.md") -Force
 
+$ConfigDir = Join-Path $StagePath "config"
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+Copy-Item (Join-Path $RepoRoot "config\windows-sm75-artifacts.json") (Join-Path $ConfigDir "windows-sm75-artifacts.json") -Force
+
 $RuntimeScriptsDir = Join-Path $StagePath "scripts"
 New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
 @(
     "run-server-windows-sm75.ps1",
     "healthcheck-windows-sm75.ps1",
     "smoke-test-windows-sm75.ps1",
+    "acceptance-windows-sm75.ps1",
+    "download-qwen38-windows-sm75.ps1",
     "verify-windows-sm75.ps1"
 ) | ForEach-Object {
     Copy-Item (Join-Path $RepoRoot "scripts\$_") (Join-Path $RuntimeScriptsDir $_) -Force
@@ -61,6 +78,17 @@ if (Test-Path (Join-Path $vcpkgRoot ".git")) {
 $cmakeVersion = ((& cmake.exe --version | Select-Object -First 1) -replace "^cmake version\s+","").Trim()
 if ($LASTEXITCODE -ne 0 -or -not $cmakeVersion) { throw "Unable to resolve CMake version." }
 
+$ArtifactLockPath = Join-Path $RepoRoot "config\windows-sm75-artifacts.json"
+if (-not (Test-Path $ArtifactLockPath -PathType Leaf)) {
+    throw "Artifact lock file not found: $ArtifactLockPath"
+}
+$ArtifactLock = Get-Content $ArtifactLockPath -Raw | ConvertFrom-Json
+$ArtifactLockHash = (Get-FileHash $ArtifactLockPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$ArtifactChannel = [string]$ArtifactLock.channel
+if ([string]::IsNullOrWhiteSpace($ArtifactChannel)) {
+    throw "Artifact lock channel is missing."
+}
+
 $manifest = [ordered]@{
     artifact_type = "ninfer-windows-sm75-runtime"
     schema_version = 2
@@ -68,6 +96,8 @@ $manifest = [ordered]@{
     cuda_arch = "sm_75"
     target_gpu = "NVIDIA RTX 2080 Ti / Turing TU102"
     configuration = "Release"
+    artifact_channel = $ArtifactChannel
+    artifact_lock_sha256 = $ArtifactLockHash
     cuda_toolkit = $cudaVersion
     vcpkg_commit = $vcpkgCommit
     msvc_toolset = $env:VCToolsVersion
@@ -84,7 +114,7 @@ $entries = Get-ChildItem $StagePath -Recurse -File |
     Sort-Object FullName |
     ForEach-Object {
         $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        $relative = [IO.Path]::GetRelativePath($StagePath, $_.FullName).Replace("\","/")
+        $relative = Get-PackageRelativePath $StagePath $_.FullName
         "$hash  $relative"
     }
 $entries | Set-Content $checksumPath -Encoding ASCII

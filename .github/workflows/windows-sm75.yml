@@ -69,6 +69,16 @@ jobs:
         shell: pwsh
         run: .\scripts\verify-package-windows-sm75.ps1
 
+      - name: Validate Windows PowerShell 5.1 package path
+        shell: powershell
+        run: |
+          Get-ChildItem .\scripts\*-windows-sm75.ps1 -File | ForEach-Object {
+            [void][ScriptBlock]::Create((Get-Content $_.FullName -Raw))
+          }
+          .\scripts\verify-windows-sm75.ps1
+          .\scripts\package-windows-sm75.ps1
+          .\scripts\verify-package-windows-sm75.ps1
+
       - name: Upload production package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

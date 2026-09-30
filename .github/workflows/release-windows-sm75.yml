@@ -73,6 +73,16 @@ jobs:
         shell: pwsh
         run: .\scripts\verify-package-windows-sm75.ps1
 
+      - name: Validate Windows PowerShell 5.1 package path
+        shell: powershell
+        run: |
+          Get-ChildItem .\scripts\*-windows-sm75.ps1 -File | ForEach-Object {
+            [void][ScriptBlock]::Create((Get-Content $_.FullName -Raw))
+          }
+          .\scripts\verify-windows-sm75.ps1
+          .\scripts\package-windows-sm75.ps1
+          .\scripts\verify-package-windows-sm75.ps1
+
       - name: Publish GitHub Release
         shell: pwsh
         env:
@@ -81,7 +91,14 @@ jobs:
           $tag = "${{ inputs.tag }}"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
-          gh release create $tag dist/*.zip dist/*.sha256 `
-            --target "$env:GITHUB_SHA" `
-            --title "NInfer Windows SM75 $tag" `
-            --notes "Native Windows RTX 2080 Ti / Turing SM75 production package. Hardware acceptance was explicitly confirmed before publication."
+          $assets = @(Get-ChildItem .\dist -File | Where-Object {
+            $_.Name -like "ninfer-windows-sm75-*.zip" -or $_.Name -like "ninfer-windows-sm75-*.zip.sha256"
+          } | Sort-Object Name | ForEach-Object { $_.FullName })
+          if ($assets.Count -lt 2) { throw "Expected release ZIP and SHA-256 asset." }
+          $releaseArgs = @("release", "create", $tag) + $assets + @(
+            "--target", $env:GITHUB_SHA,
+            "--title", "NInfer Windows SM75 $tag",
+            "--notes", "Native Windows RTX 2080 Ti / Turing SM75 production package. Hardware acceptance was explicitly confirmed before publication."
+          )
+          & gh @releaseArgs
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed with exit code $LASTEXITCODE." }
