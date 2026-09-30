@@ -64,6 +64,11 @@ dist/
    │  ├─ ninfer-serve.exe
    │  └─ *.dll
    ├─ docs/windows-sm75.md
+   ├─ scripts/
+   │  ├─ run-server-windows-sm75.ps1
+   │  ├─ healthcheck-windows-sm75.ps1
+   │  ├─ smoke-test-windows-sm75.ps1
+   │  └─ verify-windows-sm75.ps1
    ├─ BUILD-MANIFEST.json
    ├─ SHA256SUMS.txt
    ├─ README.md
@@ -97,7 +102,10 @@ MTP              disabled
 Vision           disabled
 ```
 
-It refuses a non-loopback bind unless an API key is configured.
+It refuses a non-loopback bind unless an API key is configured. The production launcher passes
+the secret through the `NINFER_API_KEY` process environment rather than `--api-key`, so the
+credential is not exposed in the child process command line. The CLI flag remains supported for
+backwards compatibility.
 
 After startup:
 
@@ -158,3 +166,11 @@ GitHub Actions artifact
 
 CI deliberately performs no fake GPU inference. Runtime correctness and performance remain a
 hardware acceptance item for the real RTX 2080 Ti.
+
+## Publishing a release
+
+The release workflow is intentionally manual. Run **Release Windows SM75** from GitHub Actions,
+provide a semantic tag such as `windows-sm75-v0.1.0`, and confirm the hardware-validation checkbox.
+The workflow rebuilds from source, verifies executable startup, regenerates checksums, and publishes
+the ZIP only after that explicit physical-GPU acceptance gate. Compile-only CI never auto-publishes
+a production release.
