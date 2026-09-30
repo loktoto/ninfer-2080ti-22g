@@ -68,14 +68,28 @@ endif()
 
 find_package(CUDAToolkit REQUIRED)
 
-# FFmpeg has no official CMake package target. Native Windows builds use
-# pkgconf + vcpkg; scripts/build-windows-sm75.ps1 wires PKG_CONFIG_PATH and
-# PKG_CONFIG_EXECUTABLE automatically.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-  libavformat>=60 libavcodec>=60 libavutil>=58 libswscale>=7)
-if(NINFER_BUILD_MEDIA_ACQUIRE)
-  pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl>=7.85)
+if(WIN32)
+  # vcpkg's FFmpeg port provides FindFFMPEG.cmake rather than an upstream
+  # package config. Normalize it to the same imported target name used by the
+  # Linux/pkg-config path so the rest of the build stays platform-neutral.
+  find_package(FFMPEG REQUIRED)
+  add_library(PkgConfig::FFMPEG INTERFACE IMPORTED GLOBAL)
+  target_include_directories(PkgConfig::FFMPEG INTERFACE ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(PkgConfig::FFMPEG INTERFACE ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(PkgConfig::FFMPEG INTERFACE ${FFMPEG_LIBRARIES})
+
+  if(NINFER_BUILD_MEDIA_ACQUIRE)
+    find_package(CURL 7.85 REQUIRED)
+    add_library(PkgConfig::LIBCURL INTERFACE IMPORTED GLOBAL)
+    target_link_libraries(PkgConfig::LIBCURL INTERFACE CURL::libcurl)
+  endif()
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+    libavformat>=60 libavcodec>=60 libavutil>=58 libswscale>=7)
+  if(NINFER_BUILD_MEDIA_ACQUIRE)
+    pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl>=7.85)
+  endif()
 endif()
 find_package(Threads REQUIRED)
 
