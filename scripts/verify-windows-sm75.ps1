@@ -7,8 +7,13 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$InstallPath = Join-Path $RepoRoot $InstallDir
-$BinDir = Join-Path $InstallPath "bin"
+$PackagedBin = Join-Path $RepoRoot "bin"
+if (Test-Path (Join-Path $PackagedBin "ninfer.exe")) {
+    $BinDir = $PackagedBin
+} else {
+    $InstallPath = Join-Path $RepoRoot $InstallDir
+    $BinDir = Join-Path $InstallPath "bin"
+}
 
 function Invoke-HelpCheck([string]$ExePath) {
     if (-not (Test-Path $ExePath)) { throw "Missing executable: $ExePath" }
