@@ -14,7 +14,15 @@ endif()
 
 project(ninfer-2080ti-22g LANGUAGES C CXX CUDA)
 
-if(WIN32)
+if(MSVC)
+  add_compile_definitions(
+    CCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN)
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>
+    $<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>)
+elseif(WIN32)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
