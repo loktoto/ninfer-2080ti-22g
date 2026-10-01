@@ -92,9 +92,10 @@ if ([string]::IsNullOrWhiteSpace($ArtifactChannel)) {
 
 $manifest = [ordered]@{
     artifact_type = "ninfer-windows-sm75-runtime"
-    schema_version = 2
+    schema_version = 3
     git_sha = $gitSha
     cuda_arch = "sm_75"
+    cuda_runtime = "static"
     target_gpu = "NVIDIA RTX 2080 Ti / Turing TU102"
     configuration = "Release"
     build_profile = "qwen3.8-27b-sm75"
