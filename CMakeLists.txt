@@ -86,6 +86,14 @@ endif()
 
 find_package(CUDAToolkit REQUIRED)
 
+# The native Windows SM75 distribution must not depend on a CUDA Toolkit runtime DLL being
+# installed on PATH. Other platform/architecture combinations retain the existing shared runtime.
+set(NINFER_CUDART_TARGET CUDA::cudart)
+if(WIN32 AND CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+  set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
+  set(NINFER_CUDART_TARGET CUDA::cudart_static)
+endif()
+
 if(WIN32)
   # vcpkg's FFmpeg port provides FindFFMPEG.cmake rather than an upstream
   # package config. Normalize it to the same imported target name used by the
