@@ -44,7 +44,7 @@ jobs:
       - name: Verify and package runtime
         shell: powershell
         run: |
-          .\scripts\verify-windows-sm75.ps1
+          .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
           .\scripts\package-windows-sm75.ps1
           .\scripts\verify-package-windows-sm75.ps1
 
