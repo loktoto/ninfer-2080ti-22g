@@ -35,7 +35,8 @@ try {
     if (-not (Test-Path $SumsPath)) { throw "SHA256SUMS.txt missing from package." }
 
     $Manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
-    if ($Manifest.schema_version -ne 2) { throw "Unsupported manifest schema: $($Manifest.schema_version)" }
+    if ($Manifest.schema_version -ne 3) { throw "Unsupported manifest schema: $($Manifest.schema_version)" }
+    if ($Manifest.cuda_runtime -ne "static") { throw "Unexpected CUDA runtime policy: $($Manifest.cuda_runtime)" }
     if ($Manifest.cuda_arch -ne "sm_75") { throw "Unexpected CUDA architecture: $($Manifest.cuda_arch)" }
     if ($Manifest.artifact_type -ne "ninfer-windows-sm75-runtime") { throw "Unexpected artifact type." }
     if ($Manifest.build_profile -ne "qwen3.8-27b-sm75") { throw "Unexpected build profile: $($Manifest.build_profile)" }
@@ -81,6 +82,12 @@ try {
         if (-not (Test-Path (Join-Path $Stage.FullName $Required) -PathType Leaf)) {
             throw "Required production package file is missing: $Required"
         }
+    }
+
+    $RuntimeVerifier = Join-Path $Stage.FullName "scripts\verify-windows-sm75.ps1"
+    & $RuntimeVerifier -RequireDependencyAudit
+    if ($LASTEXITCODE -ne 0) {
+        throw "Extracted runtime startup/dependency verification failed with exit code $LASTEXITCODE."
     }
 
     Write-Host "Release package integrity verification passed."
