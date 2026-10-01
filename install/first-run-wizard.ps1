@@ -96,8 +96,8 @@ try {
     $Acl = Get-Acl $KeyPath
     $Acl.SetAccessRuleProtection($true,$false)
     foreach ($Rule in @($Acl.Access)) { [void]$Acl.RemoveAccessRuleSpecific($Rule) }
-    $UserRule = New-Object System.Security.AccessControl.FileSystemAccessRule($Identity,"FullControl","Allow")
-    $SystemRule = New-Object System.Security.AccessControl.FileSystemAccessRule("NT AUTHORITY\SYSTEM","FullControl","Allow")
+    $UserRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $Identity,"FullControl","Allow"
+    $SystemRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList "NT AUTHORITY\SYSTEM","FullControl","Allow"
     $Acl.AddAccessRule($UserRule)
     $Acl.AddAccessRule($SystemRule)
     Set-Acl -Path $KeyPath -AclObject $Acl

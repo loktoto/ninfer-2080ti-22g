@@ -184,7 +184,7 @@ switch ($Action) {
     "Restart" { Stop-Tracked; Start-Sleep -Milliseconds 500; Start-Tracked $Mode }
     "Status"  {
         $P = Get-TrackedProcess
-        if (-not $P) { Write-Host "NInfer status: STOPPED"; exit 0 }
+        if (-not $P) { Write-Host "NInfer status: STOPPED"; return }
         $Settings = Get-Settings
         $Key = Get-ApiKey $Settings
         Write-Host "NInfer status: RUNNING (PID $($P.Id))"

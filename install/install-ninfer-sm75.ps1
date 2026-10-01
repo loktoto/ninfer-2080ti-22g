@@ -272,7 +272,7 @@ if (-not $SkipModelDownload) {
     $ModelRoot = [IO.Path]::GetPathRoot($ModelDir)
     if (-not [string]::IsNullOrWhiteSpace($ModelRoot)) {
         try {
-            $Drive = New-Object System.IO.DriveInfo($ModelRoot)
+            $Drive = New-Object -TypeName System.IO.DriveInfo -ArgumentList $ModelRoot
             $RequiredFree = $RemainingModelBytes + $SafetyBytes
             if ($Drive.AvailableFreeSpace -lt $RequiredFree) {
                 throw "Insufficient free space on $ModelRoot. Need at least $([Math]::Ceiling($RequiredFree / 1GB)) GiB free for the pinned model plus safety margin; available $([Math]::Round($Drive.AvailableFreeSpace / 1GB,2)) GiB."

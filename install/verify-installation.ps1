@@ -62,10 +62,11 @@ if (Test-Path $SumsPath -PathType Leaf) {
     $ConfigPath = Join-Path $Root "config"
     if (Test-Path $ConfigPath -PathType Container) {
         Get-ChildItem $ConfigPath -File | ForEach-Object {
-            if ($_.Name -eq "user-settings.json") { return }
-            $RootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd("\") + "\"
-            $Relative = $_.FullName.Substring($RootPrefix.Length).Replace("\","/").ToLowerInvariant()
-            if (-not $Listed.ContainsKey($Relative)) { Fail "Unexpected file in immutable config tree: $Relative" }
+            if ($_.Name -ne "user-settings.json") {
+                $RootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd("\") + "\"
+                $Relative = $_.FullName.Substring($RootPrefix.Length).Replace("\","/").ToLowerInvariant()
+                if (-not $Listed.ContainsKey($Relative)) { Fail "Unexpected file in immutable config tree: $Relative" }
+            }
         }
     }
 } else {
