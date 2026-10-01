@@ -203,28 +203,11 @@ void w8_pair_splitk_medium_launch(W8PairScheduleId schedule, const Tensor& x,
         }
         break;
     case W8PairScheduleId::DualSplitKMediumC192:
-        if (x.ne[1] <= 192) {
-            launch_medium<160, 2, 2, 2>(x, first_weight, second_weight, first_out, second_out,
-                                        stream);
-            CUDA_CHECK(cudaGetLastError());
-            return;
-        }
-        break;
     case W8PairScheduleId::DualSplitKMediumC224:
-        if (x.ne[1] <= 224) {
-            launch_medium<160, 2, 2, 2>(x, first_weight, second_weight, first_out, second_out,
-                                        stream);
-            CUDA_CHECK(cudaGetLastError());
-            return;
-        }
-        break;
     case W8PairScheduleId::DualSplitKMediumC256:
-        if (x.ne[1] <= 256) {
-            launch_medium<160, 2, 2, 2>(x, first_weight, second_weight, first_out, second_out,
-                                        stream);
-            CUDA_CHECK(cudaGetLastError());
-            return;
-        }
+        // SM75 cannot instantiate these medium tiles within the shared-memory envelope.
+        // Never degrade to a smaller tile: that would leave output columns unwritten.
+        // The live SM75 161..192 range is routed to concat MMA by the plan.
         break;
 #else
     case W8PairScheduleId::DualSplitKMediumC104:
