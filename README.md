@@ -14,7 +14,7 @@ NInfer uses standalone `.ninfer` container artifacts embedding packed weights an
 |---|---|---|---:|---|
 | [Qwen3.6-27B](https://huggingface.co/neroued/Qwen3.6-27B-NInfer) | `groupwise-int` | `qwen3_6_27b.ninfer` | 16.29 GiB | Supported (~5.5 GiB KV headroom) |
 | [Qwen3.8-27B (production-pinned v2)](https://huggingface.co/neroued/Qwen3.8-27B-NInfer/tree/3526913004b1cf552cb57b88d6a5c6f5e4a89a70) | `groupwise-int` | `qwen3_8_27b.ninfer` | 16.96 GiB | Windows SM75 production channel |
-| [Qwen3.6-35B-A3B](https://huggingface.co/neroued/Qwen3.6-35B-A3B-NInfer) | `groupwise-int` | `qwen3_6_35b_a3b.ninfer` | 21.22 GiB | Supported (~0.8 GiB KV headroom) |
+| [Qwen3.6-35B-A3B](https://huggingface.co/neroued/Qwen3.6-35B-A3B-NInfer) | `groupwise-int` | `qwen3_6_35b_a3b.ninfer` | 21.22 GiB | General build only; excluded from Windows Qwen3.8 production profile |
 
 *Note: For Turing (`sm_75`) and Ampere (`sm_86`) do not support `nvfp4`. Use `groupwise-int` (W8A16) artifacts.*
 
@@ -40,7 +40,7 @@ On an RTX 2080 Ti 22GB (~22,528 MiB addressable), available device memory is all
 
 ### 3. Execution Configuration Notes
 - **Qwen3.8-27B / Windows SM75**: start with `--kv-dtype int8 --kv-capacity auto --max-context 16384 --max-concurrency 1`. Promote 32K and 64K only after `scripts/acceptance-windows-sm75.ps1` succeeds on the exact 22GB card and packaged build. Treat 128K as experimental until a representative long-context run succeeds without OOM or numerical failure.
-- **35B-A3B Deployments**: Requires `--kv-dtype int8`, `--max-context 4096` (or `8192`), and `--max-concurrency 1` to stay within the 22GB ceiling.
+- **35B-A3B Deployments**: available only in the general build. The native Windows SM75 production script enables `NINFER_QWEN38_ONLY=ON` and intentionally does not register the 35B target.
 
 ---
 
@@ -104,13 +104,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\package-windows-sm75.ps1
 .\scripts\verify-package-windows-sm75.ps1
 
+# Full physical-card gate: 8K/32K/64K NIAH, tool calls, and MTP token-ID parity.
+.\scripts\acceptance-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
+
 # Download + SHA-256 + v2-container verification (works with Windows PowerShell 5.1).
 .\scripts\download-qwen38-windows-sm75.ps1 -ModelDir "D:\AI\models\qwen"
 ```
 
-The build is pinned to a tested vcpkg revision, stages a self-contained application directory under
-`out\windows-sm75`, verifies that both executables start with their packaged DLLs, and emits a
-checksummed ZIP in `dist\`.
+The build is pinned to a tested vcpkg revision, enables the **Qwen3.8-27B-only SM75 production profile**, stages a self-contained application directory under `out\windows-sm75`, verifies that both executables start with their packaged DLLs, and emits a checksummed ZIP in `dist\`. The profile removes the 35B target registration and avoids instantiating its heaviest BF16 GDN CUDA templates, which are irrelevant to this product build.
 
 For a conservative Qwen3.8-27B server baseline:
 
@@ -122,6 +123,8 @@ $env:NINFER_API_KEY = "replace-with-a-local-secret"
 
 See [docs/windows-sm75.md](docs/windows-sm75.md) for the supported toolchain, packaging contract,
 security defaults, and the RTX 2080 Ti hardware acceptance sequence.
+
+Production releases require a successful **self-hosted RTX 2080 Ti acceptance workflow run ID** for the exact release commit. A human checkbox is not accepted as hardware evidence; the release workflow re-verifies the evidence JSON and generates GitHub build-provenance attestations.
 
 ### Linux / WSL2
 

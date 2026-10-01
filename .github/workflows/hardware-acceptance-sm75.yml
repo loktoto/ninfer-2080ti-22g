@@ -1,0 +1,75 @@
+name: RTX 2080 Ti SM75 hardware acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_path:
+        description: "Path to pinned qwen3_8_27b.ninfer on the self-hosted Windows runner"
+        required: true
+        default: "D:\\AI\\models\\qwen\\qwen3_8_27b.ninfer"
+        type: string
+      build_jobs:
+        description: "Parallel compile jobs on the self-hosted machine"
+        required: true
+        default: "4"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: [self-hosted, Windows, X64, sm75]
+    timeout-minutes: 720
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate runner identity
+        shell: powershell
+        run: |
+          $gpu = & nvidia-smi --query-gpu=index,name,memory.total,compute_cap,driver_version --format=csv,noheader,nounits
+          if ($LASTEXITCODE -ne 0) { throw "nvidia-smi failed." }
+          Write-Host $gpu
+          if (($gpu -join "`n") -notmatch "2080\s*Ti") { throw "This workflow requires an RTX 2080 Ti runner." }
+          if (($gpu -join "`n") -notmatch ",\s*7\.5\s*,") { throw "This workflow requires compute capability 7.5." }
+          Write-Host "Self-hosted GPU identity passed. The build script will initialize VS2022 and validate CUDA/CMake/Ninja."
+
+      - name: Clean production build
+        shell: powershell
+        run: |
+          $jobs = [int]"${{ inputs.build_jobs }}"
+          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs
+
+      - name: Verify and package runtime
+        shell: powershell
+        run: |
+          .\scripts\verify-windows-sm75.ps1
+          .\scripts\package-windows-sm75.ps1
+          .\scripts\verify-package-windows-sm75.ps1
+
+      - name: Run physical GPU acceptance
+        shell: powershell
+        run: |
+          $model = "${{ inputs.model_path }}"
+          .\scripts\acceptance-windows-sm75.ps1 -Model $model
+
+      - name: Verify generated acceptance evidence
+        shell: powershell
+        run: |
+          $evidence = Get-ChildItem .\acceptance -Filter "windows-sm75-*.json" -File |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $evidence) { throw "Acceptance JSON was not generated." }
+          .\scripts\verify-acceptance-evidence.ps1 -EvidencePath $evidence.FullName -ExpectedGitSha $env:GITHUB_SHA -LockPath .\config\windows-sm75-artifacts.json
+
+      - name: Upload machine-verifiable evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ninfer-sm75-acceptance
+          path: |
+            acceptance/**
+            config/windows-sm75-artifacts.json
+            dist/*.sha256
+            dist/ninfer-windows-sm75-*/BUILD-MANIFEST.json
+          if-no-files-found: error
+          retention-days: 90

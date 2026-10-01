@@ -28,9 +28,14 @@ The script:
 2. checks `git`, `cmake`, `ninja`, `cl`, and `nvcc`;
 3. pins vcpkg to the repository-tested commit;
 4. installs the Windows FFmpeg and libcurl dependencies;
-5. configures CMake for `CMAKE_CUDA_ARCHITECTURES=75`;
-6. builds `ninfer.exe` and `ninfer-serve.exe`;
-7. stages the product under `out\windows-sm75\bin` with required vcpkg runtime DLLs.
+5. configures CMake for `CMAKE_CUDA_ARCHITECTURES=75` and `NINFER_QWEN38_ONLY=ON`;
+6. builds the Qwen3.8-27B production profile with a bounded compile-job count;
+7. stages `ninfer.exe` and `ninfer-serve.exe` under `out\windows-sm75\bin` with required vcpkg runtime DLLs.
+
+The production profile removes the Qwen3.6-35B-A3B target registration and replaces its heaviest
+BF16 GDN CUDA template specializations with fail-fast stubs. Normal non-profile builds retain the
+full target set. This avoids spending hours compiling kernels that the RTX 2080 Ti Qwen3.8 product
+cannot load through the production registry.
 
 For an already-provisioned dependency tree:
 
@@ -99,6 +104,7 @@ dist/
    │  ├─ smoke-test-windows-sm75.ps1
    │  ├─ acceptance-windows-sm75.ps1
    │  ├─ download-qwen38-windows-sm75.ps1
+   │  ├─ verify-acceptance-evidence.ps1
    │  └─ verify-windows-sm75.ps1
    ├─ config/windows-sm75-artifacts.json
    ├─ BUILD-MANIFEST.json
@@ -174,9 +180,21 @@ Run the automated acceptance harness first:
 .\scripts\acceptance-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
 ```
 
-It performs the SM75/VRAM preflight, 8K smoke test, token-counted long-prefill probes at 8K/32K/64K,
-OpenAI tool-call path validation, and deterministic MTP0/MTP3 parity. It writes a JSON evidence
-record plus server diagnostics under `acceptance\`.
+It performs the SM75/VRAM preflight, 8K smoke test, **needle-in-a-haystack semantic retrieval**
+near 8K/32K/64K, OpenAI tool-call path validation, and deterministic **MTP0/MTP3 generated-token-ID
+parity**. It writes a structured JSON evidence record plus server diagnostics under `acceptance\`.
+
+Validate an evidence file independently with:
+
+```powershell
+.\scripts\verify-acceptance-evidence.ps1 `
+  -EvidencePath .\acceptance\windows-sm75-<timestamp>.json `
+  -ExpectedGitSha <exact-git-sha> `
+  -LockPath .\config\windows-sm75-artifacts.json
+```
+
+The verifier requires RTX 2080 Ti / compute capability 7.5, at least 20,000 MiB reported VRAM,
+the pinned model SHA-256, 8K/32K/64K semantic retrieval, MTP token parity, and the tool-call path.
 
 Native compile success is not proof of CUDA-kernel correctness. Final acceptance on the physical
 RTX 2080 Ti should proceed in this order:
@@ -210,13 +228,32 @@ ZIP + SHA-256 package
 GitHub Actions artifact
 ```
 
-CI deliberately performs no fake GPU inference. Runtime correctness and performance remain a
-hardware acceptance item for the real RTX 2080 Ti.
+CI deliberately performs no fake GPU inference. The hosted build has a 360-minute ceiling and uses
+two compile jobs; the Qwen3.8-only profile avoids the previous multi-hour 35B GDN template
+instantiations. Runtime correctness remains a hardware-acceptance item for the physical RTX 2080 Ti.
+
+## Self-hosted RTX 2080 Ti acceptance workflow
+
+After the workflow exists on the repository's default branch, register the physical Windows machine
+as a GitHub self-hosted runner and add the custom runner label `sm75`. The runner must expose the
+22GB RTX 2080 Ti and have the same VS2022/CUDA/CMake/Ninja prerequisites as the local build.
+
+Run **RTX 2080 Ti SM75 hardware acceptance**. The workflow performs a clean production build,
+packages it, runs the full semantic/MTP/tool-call acceptance suite, independently verifies the
+evidence, and uploads a `ninfer-sm75-acceptance` artifact retained for 90 days.
 
 ## Publishing a release
 
-The release workflow is intentionally manual. Run **Release Windows SM75** from GitHub Actions,
-provide a semantic tag such as `windows-sm75-v0.1.0`, and confirm the hardware-validation checkbox.
-The workflow rebuilds from source, verifies executable startup, regenerates checksums, and publishes
-the ZIP only after that explicit physical-GPU acceptance gate. Compile-only CI never auto-publishes
-a production release.
+The release workflow is intentionally manual and no longer accepts a human-only validation
+checkbox. Run **Release Windows SM75** and provide:
+
+- a semantic tag such as `windows-sm75-v0.1.0`; and
+- the numeric run ID of a successful **RTX 2080 Ti SM75 hardware acceptance** workflow for the
+  exact same Git commit.
+
+The release workflow downloads that run's evidence and machine-verifies the commit SHA, pinned model
+SHA-256, GPU identity, VRAM, 8K/32K/64K NIAH results, MTP token-ID parity, and tool-call result. It
+then performs a fresh hosted Windows build, verifies/package-checks the runtime, adds the hardware
+evidence to the release assets, and creates a GitHub build-provenance attestation before publishing.
+
+Compile-only CI can never auto-publish a production release.

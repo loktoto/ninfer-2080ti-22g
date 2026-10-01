@@ -7,31 +7,53 @@ on:
         description: "Release tag (example: windows-sm75-v0.1.0)"
         required: true
         type: string
-      hardware_validated:
-        description: "I completed the documented RTX 2080 Ti 22GB hardware acceptance sequence"
+      acceptance_run_id:
+        description: "Successful RTX 2080 Ti SM75 hardware-acceptance workflow run ID for this exact commit"
         required: true
-        type: boolean
+        type: string
 
 permissions:
   contents: write
+  actions: read
+  id-token: write
+  attestations: write
 
 jobs:
   release:
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
-      - name: Require hardware acceptance
+      - name: Validate release inputs
         shell: pwsh
         run: |
-          if ("${{ inputs.hardware_validated }}" -ne "true") {
-            throw "Release blocked: physical RTX 2080 Ti hardware acceptance was not confirmed."
-          }
           if ("${{ inputs.tag }}" -notmatch "^windows-sm75-v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$") {
             throw "Invalid release tag. Expected windows-sm75-vMAJOR.MINOR.PATCH."
+          }
+          if ("${{ inputs.acceptance_run_id }}" -notmatch "^[0-9]+$") {
+            throw "acceptance_run_id must be a numeric GitHub Actions run ID."
           }
 
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download and verify physical-GPU evidence
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $runId = "${{ inputs.acceptance_run_id }}"
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$runId" | ConvertFrom-Json
+          if ($run.conclusion -ne "success") { throw "Acceptance run $runId did not succeed." }
+          if ($run.name -ne "RTX 2080 Ti SM75 hardware acceptance") { throw "Run $runId is not the SM75 hardware-acceptance workflow." }
+          if ($run.head_sha -ne $env:GITHUB_SHA) { throw "Acceptance run SHA $($run.head_sha) does not match release SHA $env:GITHUB_SHA." }
+          gh run download $runId -n ninfer-sm75-acceptance -D acceptance-proof
+          if ($LASTEXITCODE -ne 0) { throw "Failed to download hardware-acceptance evidence." }
+          $evidence = Get-ChildItem .\acceptance-proof -Recurse -Filter "windows-sm75-*.json" -File |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $evidence) { throw "Acceptance evidence JSON is missing." }
+          .\scripts\verify-acceptance-evidence.ps1 -EvidencePath $evidence.FullName -ExpectedGitSha $env:GITHUB_SHA -LockPath .\config\windows-sm75-artifacts.json
+          New-Item -ItemType Directory -Force .\release-evidence | Out-Null
+          Copy-Item $evidence.FullName .\release-evidence\HARDWARE-ACCEPTANCE.json -Force
 
       - name: Activate MSVC 2022
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
@@ -59,7 +81,7 @@ jobs:
 
       - name: Build production runtime
         shell: pwsh
-        run: .\scripts\build-windows-sm75.ps1 -Clean
+        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2
 
       - name: Verify executable startup
         shell: pwsh
@@ -83,6 +105,18 @@ jobs:
           .\scripts\package-windows-sm75.ps1
           .\scripts\verify-package-windows-sm75.ps1
 
+      - name: Add verified hardware evidence to release assets
+        shell: pwsh
+        run: Copy-Item .\release-evidence\HARDWARE-ACCEPTANCE.json .\dist\HARDWARE-ACCEPTANCE.json -Force
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/HARDWARE-ACCEPTANCE.json
+
       - name: Publish GitHub Release
         shell: pwsh
         env:
@@ -92,13 +126,15 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
           $assets = @(Get-ChildItem .\dist -File | Where-Object {
-            $_.Name -like "ninfer-windows-sm75-*.zip" -or $_.Name -like "ninfer-windows-sm75-*.zip.sha256"
+            $_.Name -like "ninfer-windows-sm75-*.zip" -or
+            $_.Name -like "ninfer-windows-sm75-*.zip.sha256" -or
+            $_.Name -eq "HARDWARE-ACCEPTANCE.json"
           } | Sort-Object Name | ForEach-Object { $_.FullName })
-          if ($assets.Count -lt 2) { throw "Expected release ZIP and SHA-256 asset." }
+          if ($assets.Count -lt 3) { throw "Expected ZIP, SHA-256 and hardware evidence assets." }
           $releaseArgs = @("release", "create", $tag) + $assets + @(
             "--target", $env:GITHUB_SHA,
             "--title", "NInfer Windows SM75 $tag",
-            "--notes", "Native Windows RTX 2080 Ti / Turing SM75 production package. Hardware acceptance was explicitly confirmed before publication."
+            "--notes", "Native Windows RTX 2080 Ti / Turing SM75 production package. Physical GPU evidence was machine-verified against this exact commit and model lock; build provenance attestations were generated before publication."
           )
           & gh @releaseArgs
           if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed with exit code $LASTEXITCODE." }

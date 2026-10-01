@@ -30,6 +30,16 @@ endif()
 option(NINFER_BUILD_APPS "Build the NInfer CLI and server" ON)
 option(BUILD_TESTING "Build NInfer tests" OFF)
 option(NINFER_BUILD_BENCHMARKS "Build NInfer benchmarks" OFF)
+option(NINFER_QWEN38_ONLY
+  "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
+
+if(NINFER_QWEN38_ONLY)
+  if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+    message(FATAL_ERROR "NINFER_QWEN38_ONLY is the SM75 production profile")
+  endif()
+  add_compile_definitions(NINFER_QWEN38_ONLY=1)
+  message(STATUS "NInfer profile: Qwen3.8-27B / SM75 production")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

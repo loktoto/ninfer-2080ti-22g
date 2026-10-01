@@ -38,6 +38,7 @@ try {
     if ($Manifest.schema_version -ne 2) { throw "Unsupported manifest schema: $($Manifest.schema_version)" }
     if ($Manifest.cuda_arch -ne "sm_75") { throw "Unexpected CUDA architecture: $($Manifest.cuda_arch)" }
     if ($Manifest.artifact_type -ne "ninfer-windows-sm75-runtime") { throw "Unexpected artifact type." }
+    if ($Manifest.build_profile -ne "qwen3.8-27b-sm75") { throw "Unexpected build profile: $($Manifest.build_profile)" }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.artifact_channel)) {
         throw "Build manifest is missing artifact_channel."
     }
@@ -73,6 +74,7 @@ try {
         "scripts\smoke-test-windows-sm75.ps1",
         "scripts\acceptance-windows-sm75.ps1",
         "scripts\download-qwen38-windows-sm75.ps1",
+        "scripts\verify-acceptance-evidence.ps1",
         "scripts\verify-windows-sm75.ps1",
         "config\windows-sm75-artifacts.json"
     )) {

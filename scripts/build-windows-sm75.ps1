@@ -6,6 +6,8 @@ param(
     [string]$Config = "Release",
     [string]$VcpkgRoot = "",
     [string]$VcpkgCommit = "b3ae22aef2b857af6e80d756c13f15db12be4e8a",
+    [ValidateRange(1,16)]
+    [int]$BuildJobs = 2,
     [switch]$SkipDependencies,
     [switch]$Clean
 )
@@ -126,6 +128,7 @@ $CmakeArgs = @(
     "-DCMAKE_TOOLCHAIN_FILE=$Toolchain",
     "-DVCPKG_TARGET_TRIPLET=x64-windows",
     "-DNINFER_BUILD_APPS=ON",
+    "-DNINFER_QWEN38_ONLY=ON",
     "-DBUILD_TESTING=OFF",
     "-DNINFER_BUILD_BENCHMARKS=OFF"
 )
@@ -133,8 +136,8 @@ $CmakeArgs = @(
 Write-Host "Configuring native SM75 build ..."
 Invoke-Checked { cmake.exe @CmakeArgs } "CMake configure"
 
-Write-Host "Compiling ..."
-Invoke-Checked { cmake.exe --build $BuildPath --parallel } "CMake build"
+Write-Host "Compiling Qwen3.8-only SM75 profile with $BuildJobs parallel job(s) ..."
+Invoke-Checked { cmake.exe --build $BuildPath --parallel $BuildJobs } "CMake build"
 
 Write-Host "Installing staged runtime ..."
 New-Item -ItemType Directory -Force -Path $InstallPath | Out-Null

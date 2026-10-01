@@ -54,6 +54,7 @@ New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
     "smoke-test-windows-sm75.ps1",
     "acceptance-windows-sm75.ps1",
     "download-qwen38-windows-sm75.ps1",
+    "verify-acceptance-evidence.ps1",
     "verify-windows-sm75.ps1"
 ) | ForEach-Object {
     Copy-Item (Join-Path $RepoRoot "scripts\$_") (Join-Path $RuntimeScriptsDir $_) -Force
@@ -96,6 +97,7 @@ $manifest = [ordered]@{
     cuda_arch = "sm_75"
     target_gpu = "NVIDIA RTX 2080 Ti / Turing TU102"
     configuration = "Release"
+    build_profile = "qwen3.8-27b-sm75"
     artifact_channel = $ArtifactChannel
     artifact_lock_sha256 = $ArtifactLockHash
     cuda_toolkit = $cudaVersion

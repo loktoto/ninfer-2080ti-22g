@@ -12,7 +12,8 @@ param(
     [ValidateRange(1,300)]
     [int]$StartupRetries = 90,
     [switch]$SkipMtpParity,
-    [switch]$SkipToolCall
+    [switch]$SkipToolCall,
+    [switch]$SkipNiah
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,16 +65,26 @@ function New-FillerText([int]$Units) {
     return $Builder.ToString()
 }
 
-function Find-ContextPrompt([string]$ModelId, [int]$ContextLimit) {
+function New-NiahText([int]$Units, [string]$Needle) {
+    $LeftUnits = [int][Math]::Floor($Units / 2)
+    $RightUnits = $Units - $LeftUnits
+    $Left = New-FillerText $LeftUnits
+    $Right = New-FillerText $RightUnits
+    return $Left + "`nThe secret verification code is: " + $Needle +
+        "`n" + $Right +
+        "`nQuestion: What is the secret verification code? Reply with the code only."
+}
+
+function Find-ContextPrompt([string]$ModelId, [int]$ContextLimit, [string]$Needle) {
     $Goal = [Math]::Max(512, $ContextLimit - 256)
     $Low = 1
     $High = [Math]::Max(1024, $Goal * 2)
     $BestText = ""
     $BestTokens = 0
 
-    for ($Iteration = 0; $Iteration -lt 20 -and $Low -le $High; $Iteration++) {
+    for ($Iteration = 0; $Iteration -lt 22 -and $Low -le $High; $Iteration++) {
         $Mid = [int][Math]::Floor(($Low + $High) / 2)
-        $Text = New-FillerText $Mid
+        $Text = New-NiahText $Mid $Needle
         $CountBody = @{
             model = $ModelId
             messages = @(@{ role = "user"; content = $Text })
@@ -92,7 +103,35 @@ function Find-ContextPrompt([string]$ModelId, [int]$ContextLimit) {
     if ($BestTokens -lt [int]($Goal * 0.90)) {
         throw "Could not synthesize a prompt close enough to the $ContextLimit-token acceptance target; best count was $BestTokens."
     }
-    return [pscustomobject]@{ Text = $BestText; Tokens = $BestTokens; Limit = $ContextLimit }
+    return [pscustomobject]@{
+        Text = $BestText
+        Tokens = $BestTokens
+        Limit = $ContextLimit
+        Needle = $Needle
+    }
+}
+
+function Get-GeneratedTokenIds([string]$StderrPath) {
+    $TokenIds = $null
+    foreach ($Line in Get-Content $StderrPath) {
+        if ($Line -match "generated ids\s+(.+)$") {
+            $TokenIds = $Matches[1].Trim()
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($TokenIds)) {
+        throw "CLI did not emit generated token IDs in $StderrPath."
+    }
+    return $TokenIds
+}
+
+function Get-CliMetric([string]$StderrPath, [string]$MetricName) {
+    $Value = $null
+    foreach ($Line in Get-Content $StderrPath) {
+        if ($Line -match ("^summary\s+" + [Regex]::Escape($MetricName) + "\s+(.+)$")) {
+            $Value = $Matches[1].Trim()
+        }
+    }
+    return $Value
 }
 
 $CliExe = Resolve-RuntimeBinary "ninfer.exe"
@@ -159,12 +198,13 @@ try {
     $ModelId = [string]$Models.data[0].id
 
     foreach ($Limit in ($ContextTargets | Sort-Object -Unique)) {
-        Write-Host "Exercising long-context prefill near $Limit tokens..."
-        $Prepared = Find-ContextPrompt $ModelId $Limit
+        $Needle = "SM75-" + $Limit + "-ZEBRA-42-QUARTZ-7719"
+        Write-Host "Exercising long-context NIAH near $Limit tokens..."
+        $Prepared = Find-ContextPrompt $ModelId $Limit $Needle
         $Body = @{
             model = $ModelId
             messages = @(@{ role = "user"; content = $Prepared.Text })
-            max_tokens = 1
+            max_tokens = 32
             temperature = 0
             stream = $false
         }
@@ -174,10 +214,18 @@ try {
         if (-not $Response.choices -or $Response.choices.Count -lt 1) {
             throw "No completion choice returned for context target $Limit."
         }
+        $Content = [string]$Response.choices[0].message.content
+        $NiahPassed = $Content.Contains($Needle)
+        if (-not $NiahPassed -and -not $SkipNiah) {
+            throw "NIAH retrieval failed at context target $Limit. Expected needle '$Needle', got '$Content'."
+        }
         $ContextResults += [pscustomobject]@{
             context_limit = $Limit
             counted_input_tokens = $Prepared.Tokens
             wall_seconds = [Math]::Round($Watch.Elapsed.TotalSeconds, 3)
+            needle = $Needle
+            niah_response = $Content
+            niah_passed = $NiahPassed
             passed = $true
         }
     }
@@ -228,6 +276,8 @@ try {
 }
 
 $MtpParity = $null
+$MtpTokenIds = $null
+$MtpMetrics = $null
 if (-not $SkipMtpParity) {
     Write-Host "Checking greedy MTP0/MTP3 token-path parity..."
     $Prompt = "Return exactly one short sentence explaining why deterministic parity matters."
@@ -239,25 +289,56 @@ if (-not $SkipMtpParity) {
         "--kv-dtype", "int8",
         "--greedy",
         "--no-thinking",
-        "--raw-output"
+        "--raw-output",
+        "--print-token-ids"
     )
     $BaseErr = Join-Path $EvidenceDir "mtp0-$Stamp.stderr.log"
     $MtpErr = Join-Path $EvidenceDir "mtp3-$Stamp.stderr.log"
-    $Mtp0 = (& $CliExe @Common 2>$BaseErr | Out-String).Trim()
+    $Mtp0Text = (& $CliExe @Common 2>$BaseErr | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { throw "MTP0 parity control failed. See $BaseErr" }
+    $Mtp0Ids = Get-GeneratedTokenIds $BaseErr
+
     $Mtp3Args = $Common + @("--spec","mtp","--draft-tokens","3","--lm-head-draft")
-    $Mtp3 = (& $CliExe @Mtp3Args 2>$MtpErr | Out-String).Trim()
+    $Mtp3Text = (& $CliExe @Mtp3Args 2>$MtpErr | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { throw "MTP3 parity run failed. See $MtpErr" }
-    if ($Mtp0 -ne $Mtp3) {
-        throw "MTP0/MTP3 greedy output parity failed. Evidence logs are under $EvidenceDir."
+    $Mtp3Ids = Get-GeneratedTokenIds $MtpErr
+
+    if ($Mtp0Ids -ne $Mtp3Ids) {
+        throw "MTP0/MTP3 greedy token-ID parity failed. Evidence logs are under $EvidenceDir."
+    }
+    if ($Mtp0Text -ne $Mtp3Text) {
+        throw "MTP0/MTP3 raw-output parity failed despite equal token IDs."
     }
     $MtpParity = $true
+    $MtpTokenIds = $Mtp3Ids
+    $MtpMetrics = [ordered]@{
+        rounds = Get-CliMetric $MtpErr "mtp rounds"
+        drafted_tokens = Get-CliMetric $MtpErr "mtp drafted tokens"
+        accepted_tokens = Get-CliMetric $MtpErr "mtp accepted tokens"
+        acceptance_rate = Get-CliMetric $MtpErr "mtp acceptance rate"
+        acceptance_length = Get-CliMetric $MtpErr "mtp acceptance length"
+    }
 }
 
 $GpuRows = @(& nvidia-smi --query-gpu=index,name,memory.total,compute_cap,driver_version --format=csv,noheader,nounits)
 if ($LASTEXITCODE -ne 0 -or $GpuRows.Count -eq 0) {
     throw "nvidia-smi evidence query failed."
 }
+$SelectedGpu = $null
+foreach ($Row in $GpuRows) {
+    $Parts = @($Row -split "," | ForEach-Object { $_.Trim() })
+    if ($Parts.Count -ge 5 -and [int]$Parts[0] -eq $Device) {
+        $SelectedGpu = [ordered]@{
+            index = [int]$Parts[0]
+            name = $Parts[1]
+            memory_total_mib = [int]$Parts[2]
+            compute_capability = $Parts[3]
+            driver_version = $Parts[4]
+        }
+        break
+    }
+}
+if (-not $SelectedGpu) { throw "Selected GPU $Device was not found in nvidia-smi evidence." }
 
 $BuildGitSha = $null
 if (Test-Path (Join-Path $RepoRoot ".git")) {
@@ -285,9 +366,12 @@ $Evidence = [ordered]@{
     model_path = $ModelPath
     model_sha256 = (Get-FileHash $ModelPath -Algorithm SHA256).Hash.ToLowerInvariant()
     device = $Device
+    gpu = $SelectedGpu
     gpu_inventory = $GpuRows
     context_results = $ContextResults
-    mtp0_mtp3_parity = $MtpParity
+    mtp0_mtp3_token_parity = $MtpParity
+    mtp_generated_token_ids = $MtpTokenIds
+    mtp3_metrics = $MtpMetrics
     tool_call = $ToolCallPassed
     server_stdout = $StdoutPath
     server_stderr = $StderrPath

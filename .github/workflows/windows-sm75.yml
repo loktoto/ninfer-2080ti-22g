@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 180
+    timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -55,7 +55,7 @@ jobs:
 
       - name: Build and stage native SM75 runtime
         shell: pwsh
-        run: .\scripts\build-windows-sm75.ps1 -Clean
+        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2
 
       - name: Verify packaged binaries start
         shell: pwsh
