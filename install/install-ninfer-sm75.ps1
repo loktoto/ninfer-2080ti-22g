@@ -117,17 +117,48 @@ function Ensure-VcRuntime {
     $RuntimeDll = Join-Path $env:WINDIR "System32\vcruntime140.dll"
     if (Test-Path $RuntimeDll -PathType Leaf) { return }
     if ($SkipPrerequisites) {
-        throw "Microsoft Visual C++ 2015-2022 x64 runtime is missing and -SkipPrerequisites was requested."
+        throw "Microsoft Visual C++ v14 x64 runtime is missing and -SkipPrerequisites was requested."
     }
+
     $Winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-    if (-not $Winget) {
-        throw "Microsoft Visual C++ 2015-2022 x64 runtime is missing and winget is unavailable. Install Microsoft.VCRedist.2015+.x64, then re-run."
+    if ($Winget) {
+        Write-Host "Installing Microsoft Visual C++ v14 Redistributable (x64) with winget..."
+        & $Winget.Source install --id Microsoft.VCRedist.2015+.x64 --exact --silent --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $RuntimeDll -PathType Leaf)) { return }
+        Write-Warning "winget VC++ bootstrap did not complete successfully; falling back to Microsoft's signed installer."
     }
-    Write-Host "Installing Microsoft Visual C++ 2015-2022 Redistributable (x64)..."
-    & $Winget.Source install --id Microsoft.VCRedist.2015+.x64 --exact --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) { throw "VC++ Redistributable installation failed with exit code $LASTEXITCODE." }
-    if (-not (Test-Path $RuntimeDll -PathType Leaf)) {
-        throw "VC++ runtime installer completed but vcruntime140.dll is still unavailable. A reboot may be required."
+
+    $TempInstaller = Join-Path ([IO.Path]::GetTempPath()) ("vc_redist.x64." + [guid]::NewGuid().ToString("N") + ".exe")
+    $VcUrl = "https://aka.ms/vc14/vc_redist.x64.exe"
+    try {
+        Write-Host "Downloading the latest Microsoft-signed Visual C++ v14 x64 Redistributable..."
+        $Curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if ($Curl) {
+            & $Curl.Source --location --fail --retry 3 --output $TempInstaller $VcUrl
+            if ($LASTEXITCODE -ne 0) { throw "curl download failed with exit code $LASTEXITCODE." }
+        } else {
+            Invoke-WebRequest -Uri $VcUrl -OutFile $TempInstaller -UseBasicParsing
+        }
+
+        $Signature = Get-AuthenticodeSignature -FilePath $TempInstaller
+        if ($Signature.Status -ne "Valid" -or
+            -not $Signature.SignerCertificate -or
+            $Signature.SignerCertificate.Subject -notmatch "Microsoft Corporation") {
+            throw "Downloaded VC++ Redistributable does not have a valid Microsoft Authenticode signature."
+        }
+
+        $Install = Start-Process -FilePath $TempInstaller -ArgumentList "/install","/quiet","/norestart" -Wait -PassThru
+        if ($Install.ExitCode -notin @(0,1638,3010)) {
+            throw "Microsoft VC++ Redistributable installer failed with exit code $($Install.ExitCode)."
+        }
+        if (-not (Test-Path $RuntimeDll -PathType Leaf)) {
+            throw "VC++ runtime installation completed but vcruntime140.dll is unavailable. Reboot Windows and run START-HERE.bat again."
+        }
+        if ($Install.ExitCode -eq 3010) {
+            Write-Warning "VC++ runtime requested a reboot. NInfer may work immediately, but rebooting before heavy use is recommended."
+        }
+    } finally {
+        Remove-Item $TempInstaller -Force -ErrorAction SilentlyContinue
     }
 }
 
