@@ -82,12 +82,34 @@ The historical setup was recorded as NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_7
 
 - **OS**: 64-bit Linux, WSL2, or native Windows 10/11. Native Windows instructions: [docs/windows-sm75.md](docs/windows-sm75.md).
 - **GPU**: NVIDIA GPU with Turing `sm_75` (RTX 2080 Ti 22GB), Ampere `sm_86`, or Blackwell `sm_120a`.
-- **CUDA**: CUDA Toolkit >= 12.8 and compatible NVIDIA driver.
-- **Windows build tools**: Visual Studio 2022 Build Tools (v143), Windows SDK, CMake >= 3.28, Ninja, Git, Windows PowerShell 5.1+ or PowerShell 7.
+- **Windows release runtime**: NVIDIA driver branch R580+ and Microsoft Visual C++ 2015-2022 x64 runtime. The packaged Qwen3.8/SM75 build statically links the CUDA runtime, so end users do **not** need the CUDA Toolkit.
+- **Windows source build**: CUDA Toolkit 13.1, Visual Studio 2022 Build Tools (v143), Windows SDK, CMake >= 3.28, Ninja, Git, Windows PowerShell 5.1+ or PowerShell 7.
 - **Linux / WSL2 build tools**: CMake >= 3.28, Ninja, GCC >= 11 or Clang >= 14, `pkg-config`.
 - **System Libraries**:
   - FFmpeg development libraries (`libavformat >= 60`, `libavcodec >= 60`, `libavutil >= 58`, `libswscale >= 7`)
   - `libcurl >= 7.85`
+
+---
+
+## Windows one-click install — RTX 2080 Ti 22GB
+
+For the packaged Windows release, extract the ZIP and double-click:
+
+```text
+START-HERE.bat
+```
+
+The installer validates the package checksums and product manifest, requires RTX 2080 Ti / CC 7.5 / 20GB+ VRAM / R580+ NVIDIA driver, installs the VC++ runtime if needed, downloads the exact pinned Qwen3.8 artifact with resume support, verifies its SHA-256 and v2 container header, creates a local API key and shortcuts, starts the conservative Base server, then checks `/health` and `/v1/models`.
+
+Default paths on systems with a `D:` drive:
+
+```text
+Runtime  D:\AI\NInfer-SM75
+Model    D:\AI\models\qwen\qwen3_8_27b.ninfer
+API      http://127.0.0.1:8080/v1
+```
+
+See [docs/INSTALL-WINDOWS-SM75.md](docs/INSTALL-WINDOWS-SM75.md) for install, repair, uninstall, MTP/Vision launchers, DeepSeek Harness/Hermes endpoint details, and full physical-card acceptance.
 
 ---
 
@@ -147,7 +169,7 @@ Targets:
 
 ## Model Download
 
-Download registered `groupwise-int` `.ninfer` artifacts via the Hugging Face CLI:
+The Windows one-click installer downloads the pinned Qwen3.8 artifact directly with Windows `curl.exe`, supports resume, and verifies SHA-256. The Hugging Face CLI remains an optional manual/developer path for registered artifacts:
 
 ```bash
 pip install huggingface-hub
@@ -234,6 +256,8 @@ curl http://127.0.0.1:8080/v1/chat/completions \
 
 ## Documentation
 
+- [Windows SM75 One-click Install](docs/INSTALL-WINDOWS-SM75.md)
+- [Native Windows SM75 Build/Release](docs/windows-sm75.md)
 - [CLI Usage Guide](docs/cli.md)
 - [HTTP Serving Protocol](docs/serving.md)
 - [Paged KV Cache Architecture](docs/maintainer/paged-kv-cache.md)

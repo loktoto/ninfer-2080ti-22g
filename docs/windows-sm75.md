@@ -3,17 +3,35 @@
 This branch provides the native Windows/MSVC product path for the Turing `sm_75` port.
 The deliverable is a staged runtime plus a checksummed ZIP; WSL2 is not required.
 
-## Supported production toolchain
+## Runtime requirements
+
+For the packaged Windows release:
 
 - Windows 10/11 x64
 - NVIDIA RTX 2080 Ti / TU102 (`sm_75`), including 22GB-mod cards
-- Visual Studio 2022 Build Tools (v143) with Desktop development with C++ and Windows SDK
-- CUDA Toolkit 12.8 or newer; CI validates CUDA 13.1 with VS2022
-- CMake 3.28+, Ninja, Git
-- Windows PowerShell 5.1+ or PowerShell 7 (both are CI-checked for packaged scripts)
+- at least 20,000 MiB VRAM reported by `nvidia-smi`
+- NVIDIA driver branch **R580 or newer**
+- Microsoft Visual C++ 2015-2022 x64 runtime
 
-The build script intentionally selects Visual Studio 2022. CUDA 13.1 rejects newer unsupported
-MSVC toolsets; the production path does not use `-allow-unsupported-compiler`.
+The Qwen3.8-only Windows product links `CUDA::cudart_static`, so a normal user does **not** need the CUDA Toolkit, Visual Studio, CMake, Ninja, Git, Python, or PowerShell 7.
+
+## Supported build toolchain
+
+Building from source requires Visual Studio 2022 Build Tools (v143) with Desktop development with C++ and Windows SDK, CUDA Toolkit 13.1, CMake 3.28+, Ninja, Git, and Windows PowerShell 5.1+ or PowerShell 7.
+
+The build script intentionally selects Visual Studio 2022. The production path does not use `-allow-unsupported-compiler`.
+
+## One-click packaged installation
+
+Extract the release ZIP and run:
+
+```text
+START-HERE.bat
+```
+
+The package installer performs full extracted-file SHA-256 coverage validation, validates the build manifest and embedded model-lock hash, checks the RTX 2080 Ti / CC 7.5 / VRAM / R580+ driver contract, installs VC++ runtime if needed, installs the runtime atomically, downloads and verifies the pinned model with resumable `curl.exe`, creates local configuration/key material, starts Base mode and runs readiness checks.
+
+Full user guide: [INSTALL-WINDOWS-SM75.md](INSTALL-WINDOWS-SM75.md).
 
 ## Reproducible build
 
@@ -97,16 +115,35 @@ dist/
    │  ├─ ninfer.exe
    │  ├─ ninfer-serve.exe
    │  └─ *.dll
-   ├─ docs/windows-sm75.md
+   ├─ START-HERE.bat
+   ├─ README-FIRST.txt
+   ├─ docs/
+   │  ├─ windows-sm75.md
+   │  └─ INSTALL-WINDOWS-SM75.md
    ├─ scripts/
    │  ├─ run-server-windows-sm75.ps1
+   │  ├─ manage-installed-server.ps1
    │  ├─ healthcheck-windows-sm75.ps1
    │  ├─ smoke-test-windows-sm75.ps1
    │  ├─ acceptance-windows-sm75.ps1
    │  ├─ download-qwen38-windows-sm75.ps1
    │  ├─ verify-acceptance-evidence.ps1
    │  └─ verify-windows-sm75.ps1
-   ├─ config/windows-sm75-artifacts.json
+   ├─ install/
+   │  ├─ install-ninfer-sm75.ps1
+   │  ├─ first-run-wizard.ps1
+   │  ├─ verify-installation.ps1
+   │  ├─ repair-ninfer-sm75.ps1
+   │  └─ uninstall-ninfer-sm75.ps1
+   ├─ launchers/
+   │  ├─ Start-NInfer.bat
+   │  ├─ Start-NInfer-MTP.bat
+   │  ├─ Start-NInfer-Vision.bat
+   │  ├─ Stop-NInfer.bat
+   │  └─ Configure-NInfer.bat
+   ├─ config/
+   │  ├─ windows-sm75-artifacts.json
+   │  └─ production-defaults.json
    ├─ BUILD-MANIFEST.json
    ├─ SHA256SUMS.txt
    ├─ README.md
@@ -194,7 +231,8 @@ Validate an evidence file independently with:
 ```
 
 The verifier requires RTX 2080 Ti / compute capability 7.5, at least 20,000 MiB reported VRAM,
-the pinned model SHA-256, 8K/32K/64K semantic retrieval, MTP token parity, and the tool-call path.
+NVIDIA driver branch R580+, the pinned model SHA-256, 8K/32K/64K semantic retrieval, MTP token parity,
+and the tool-call path.
 
 Native compile success is not proof of CUDA-kernel correctness. Final acceptance on the physical
 RTX 2080 Ti should proceed in this order:

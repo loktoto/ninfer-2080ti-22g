@@ -41,10 +41,12 @@ New-Item -ItemType Directory -Force -Path $DocsDir | Out-Null
 Copy-Item (Join-Path $RepoRoot "README.md") (Join-Path $StagePath "README.md") -Force
 Copy-Item (Join-Path $RepoRoot "LICENSE") (Join-Path $StagePath "LICENSE") -Force
 Copy-Item (Join-Path $RepoRoot "docs\windows-sm75.md") (Join-Path $DocsDir "windows-sm75.md") -Force
+Copy-Item (Join-Path $RepoRoot "docs\INSTALL-WINDOWS-SM75.md") (Join-Path $DocsDir "INSTALL-WINDOWS-SM75.md") -Force
 
 $ConfigDir = Join-Path $StagePath "config"
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 Copy-Item (Join-Path $RepoRoot "config\windows-sm75-artifacts.json") (Join-Path $ConfigDir "windows-sm75-artifacts.json") -Force
+Copy-Item (Join-Path $RepoRoot "config\production-defaults.json") (Join-Path $ConfigDir "production-defaults.json") -Force
 
 $RuntimeScriptsDir = Join-Path $StagePath "scripts"
 New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
@@ -54,11 +56,36 @@ New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
     "smoke-test-windows-sm75.ps1",
     "acceptance-windows-sm75.ps1",
     "download-qwen38-windows-sm75.ps1",
+    "manage-installed-server.ps1",
     "verify-acceptance-evidence.ps1",
     "verify-windows-sm75.ps1"
 ) | ForEach-Object {
     Copy-Item (Join-Path $RepoRoot "scripts\$_") (Join-Path $RuntimeScriptsDir $_) -Force
 }
+
+$InstallerDir = Join-Path $StagePath "install"
+New-Item -ItemType Directory -Force -Path $InstallerDir | Out-Null
+@(
+    "START-HERE.bat",
+    "README-FIRST.txt",
+    "install-ninfer-sm75.ps1",
+    "install-ninfer-sm75.bat",
+    "first-run-wizard.ps1",
+    "verify-installation.ps1",
+    "repair-ninfer-sm75.ps1",
+    "uninstall-ninfer-sm75.ps1"
+) | ForEach-Object {
+    Copy-Item (Join-Path $RepoRoot "install\$_") (Join-Path $InstallerDir $_) -Force
+}
+
+$LaunchersDir = Join-Path $StagePath "launchers"
+New-Item -ItemType Directory -Force -Path $LaunchersDir | Out-Null
+Get-ChildItem (Join-Path $RepoRoot "launchers") -Filter *.bat -File | ForEach-Object {
+    Copy-Item $_.FullName (Join-Path $LaunchersDir $_.Name) -Force
+}
+
+Copy-Item (Join-Path $RepoRoot "install\START-HERE.bat") (Join-Path $StagePath "START-HERE.bat") -Force
+Copy-Item (Join-Path $RepoRoot "install\README-FIRST.txt") (Join-Path $StagePath "README-FIRST.txt") -Force
 
 $cudaVersion = $null
 $nvcc = Get-Command nvcc.exe -ErrorAction SilentlyContinue
@@ -98,6 +125,9 @@ $manifest = [ordered]@{
     target_gpu = "NVIDIA RTX 2080 Ti / Turing TU102"
     configuration = "Release"
     build_profile = "qwen3.8-27b-sm75"
+    cuda_runtime_linkage = "static"
+    minimum_nvidia_driver_branch = 580
+    installer_schema = 1
     artifact_channel = $ArtifactChannel
     artifact_lock_sha256 = $ArtifactLockHash
     cuda_toolkit = $cudaVersion

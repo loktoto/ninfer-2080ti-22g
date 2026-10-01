@@ -53,6 +53,12 @@ if ([string]$Gpu.name -notmatch "2080\s*Ti") {
     throw "Acceptance evidence GPU is not an RTX 2080 Ti: '$($Gpu.name)'."
 }
 
+$DriverMajor = 0
+try { $DriverMajor = [int](([string]$Gpu.driver_version -split "\.")[0]) } catch {}
+if ($DriverMajor -lt 580) {
+    throw "Acceptance evidence driver '$($Gpu.driver_version)' is below the CUDA 13.x minimum R580 branch."
+}
+
 $Results = @($Evidence.context_results)
 foreach ($Context in $RequiredContexts) {
     $Match = @($Results | Where-Object { [int]$_.context_limit -eq $Context }) | Select-Object -First 1

@@ -30,7 +30,7 @@ for ($Attempt = 1; $Attempt -le $Retries; $Attempt++) {
         Write-Host "Readiness check passed."
         Write-Host "  Health: $($health.status)"
         Write-Host "  Model:  $($models.data[0].id)"
-        exit 0
+        return
     } catch {
         $LastError = $_
         if ($Attempt -lt $Retries) {

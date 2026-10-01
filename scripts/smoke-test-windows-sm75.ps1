@@ -56,6 +56,12 @@ if ($Selected.VramMiB -lt $MinVramMiB) {
     throw "GPU $Device reports $($Selected.VramMiB) MiB VRAM; production Qwen3.8-27B acceptance requires at least $MinVramMiB MiB."
 }
 
+$DriverMajor = 0
+try { $DriverMajor = [int](($Selected.Driver -split "\.")[0]) } catch {}
+if ($DriverMajor -lt 580) {
+    throw "GPU $Device driver $($Selected.Driver) is too old for the CUDA 13.x production runtime. Driver branch R580 or newer is required."
+}
+
 Write-Host "GPU preflight passed:"
 Write-Host "  Device:  $($Selected.Index)"
 Write-Host "  Name:    $($Selected.Name)"

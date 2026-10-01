@@ -27,4 +27,17 @@ function Invoke-HelpCheck([string]$ExePath) {
 Invoke-HelpCheck (Join-Path $BinDir "ninfer.exe")
 Invoke-HelpCheck (Join-Path $BinDir "ninfer-serve.exe")
 
+$Dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+if ($Dumpbin) {
+    foreach ($ExeName in @("ninfer.exe","ninfer-serve.exe")) {
+        $ExePath = Join-Path $BinDir $ExeName
+        $Dependencies = (& $Dumpbin.Source /DEPENDENTS $ExePath | Out-String)
+        if ($LASTEXITCODE -ne 0) { throw "dumpbin dependency audit failed for $ExeName." }
+        if ($Dependencies -match "cudart64_[0-9]+\.dll") {
+            throw "$ExeName has a dynamic CUDA runtime dependency; Windows production package requires static cudart."
+        }
+    }
+    Write-Host "CUDA runtime dependency audit passed (no dynamic cudart DLL import)."
+}
+
 Write-Host "Binary startup verification passed."
