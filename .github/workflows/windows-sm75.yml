@@ -88,5 +88,6 @@ jobs:
           path: |
             dist/*.zip
             dist/*.sha256
+            dist/*.zip.sbom.cdx.json
           if-no-files-found: error
           retention-days: 14

@@ -2,6 +2,8 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$Model,
+    [Parameter(Mandatory=$true)]
+    [string]$PackagePath,
     [string]$InstallDir = "out\windows-sm75",
     [ValidateRange(0,15)]
     [int]$Device = 0,
@@ -21,6 +23,13 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $ModelPath = (Resolve-Path $Model -ErrorAction Stop).Path
+$QualifiedPackagePath = (Resolve-Path $PackagePath -ErrorAction Stop).Path
+if (-not (Test-Path $QualifiedPackagePath -PathType Leaf) -or
+    [IO.Path]::GetExtension($QualifiedPackagePath) -ne ".zip") {
+    throw "PackagePath must point to the qualified release ZIP: $PackagePath"
+}
+$QualifiedPackage = Get-Item $QualifiedPackagePath
+$QualifiedPackageSha256 = (Get-FileHash $QualifiedPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $ArtifactVerifier = Join-Path $PSScriptRoot "download-qwen38-windows-sm75.ps1"
 if (-not (Test-Path $ArtifactVerifier -PathType Leaf)) {
@@ -32,11 +41,11 @@ if ((Split-Path $ModelPath -Leaf) -ne "qwen3_8_27b.ninfer") {
 & $ArtifactVerifier -ModelDir (Split-Path $ModelPath -Parent) -VerifyOnly
 
 function Resolve-RuntimeBinary([string]$Name) {
-    $Packaged = Join-Path $RepoRoot "bin\$Name"
-    if (Test-Path $Packaged -PathType Leaf) { return $Packaged }
     $Staged = Join-Path $RepoRoot "$InstallDir\bin\$Name"
     if (Test-Path $Staged -PathType Leaf) { return $Staged }
-    throw "$Name was not found in the packaged or staged runtime."
+    $Packaged = Join-Path $RepoRoot "bin\$Name"
+    if (Test-Path $Packaged -PathType Leaf) { return $Packaged }
+    throw "$Name was not found in the staged or packaged runtime."
 }
 
 function Invoke-NInferJson([string]$Method, [string]$Uri, $Body = $null) {
@@ -359,12 +368,15 @@ if ([string]::IsNullOrWhiteSpace($BuildGitSha)) {
 if ([string]::IsNullOrWhiteSpace($BuildGitSha)) { $BuildGitSha = "unknown" }
 
 $Evidence = [ordered]@{
-    schema_version = 1
+    schema_version = 2
     artifact_type = "ninfer_windows_sm75_hardware_acceptance"
     created_utc = [DateTime]::UtcNow.ToString("o")
     git_sha = $BuildGitSha
     model_path = $ModelPath
     model_sha256 = (Get-FileHash $ModelPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    package_filename = $QualifiedPackage.Name
+    package_size_bytes = [int64]$QualifiedPackage.Length
+    package_sha256 = $QualifiedPackageSha256
     device = $Device
     gpu = $SelectedGpu
     gpu_inventory = $GpuRows

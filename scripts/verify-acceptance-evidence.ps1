@@ -4,6 +4,8 @@ param(
     [string]$EvidencePath,
     [Parameter(Mandatory=$true)]
     [string]$ExpectedGitSha,
+    [Parameter(Mandatory=$true)]
+    [string]$PackagePath,
     [string]$LockPath = "",
     [int[]]$RequiredContexts = @(8192,32768,65536),
     [ValidateRange(1024,131072)]
@@ -16,7 +18,7 @@ Set-StrictMode -Version Latest
 $ResolvedEvidence = (Resolve-Path $EvidencePath -ErrorAction Stop).Path
 $Evidence = Get-Content $ResolvedEvidence -Raw | ConvertFrom-Json
 
-if ($Evidence.schema_version -ne 1) {
+if ($Evidence.schema_version -ne 2) {
     throw "Unsupported acceptance evidence schema: $($Evidence.schema_version)"
 }
 if ($Evidence.artifact_type -ne "ninfer_windows_sm75_hardware_acceptance") {
@@ -24,6 +26,23 @@ if ($Evidence.artifact_type -ne "ninfer_windows_sm75_hardware_acceptance") {
 }
 if ([string]::IsNullOrWhiteSpace($Evidence.git_sha) -or $Evidence.git_sha -ne $ExpectedGitSha) {
     throw "Acceptance git SHA '$($Evidence.git_sha)' does not match expected '$ExpectedGitSha'."
+}
+
+$ResolvedPackage = (Resolve-Path $PackagePath -ErrorAction Stop).Path
+if (-not (Test-Path $ResolvedPackage -PathType Leaf)) {
+    throw "Qualified package not found: $PackagePath"
+}
+$PackageFile = Get-Item $ResolvedPackage
+$ActualPackageSha = (Get-FileHash $ResolvedPackage -Algorithm SHA256).Hash.ToLowerInvariant()
+if ([string]::IsNullOrWhiteSpace([string]$Evidence.package_sha256) -or
+    [string]$Evidence.package_sha256 -ne $ActualPackageSha) {
+    throw "Acceptance package SHA-256 does not match the qualified release ZIP."
+}
+if ([string]$Evidence.package_filename -ne $PackageFile.Name) {
+    throw "Acceptance package filename '$($Evidence.package_filename)' does not match '$($PackageFile.Name)'."
+}
+if ([int64]$Evidence.package_size_bytes -ne [int64]$PackageFile.Length) {
+    throw "Acceptance package size does not match the qualified release ZIP."
 }
 
 if ([string]::IsNullOrWhiteSpace($LockPath)) {
@@ -86,6 +105,7 @@ Write-Host "  Git SHA:   $($Evidence.git_sha)"
 Write-Host "  GPU:       $($Gpu.name)"
 Write-Host "  VRAM MiB:  $($Gpu.memory_total_mib)"
 Write-Host "  Model SHA: $($Evidence.model_sha256)"
+Write-Host "  ZIP SHA:   $($Evidence.package_sha256)"
 Write-Host "  Contexts:  $($RequiredContexts -join ', ')"
 Write-Host "  MTP parity: token-identical"
 Write-Host "  Tool call: passed"
