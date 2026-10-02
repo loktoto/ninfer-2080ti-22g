@@ -20,6 +20,7 @@ Daily use:
   launchers\Status-NInfer.bat         Status / health
   launchers\Configure-NInfer.bat      Change port/context/model/device
   launchers\Check-NInfer.bat          Full installation verification
+  launchers\Repair-NInfer.bat         Repair config/key and restore the exact pinned model if needed
 
 Runtime requirements:
   NVIDIA driver branch R580 or newer + Microsoft VC++ 2015-2022 x64 runtime.
@@ -31,4 +32,7 @@ Security:
 
 Important:
   128K context is experimental. 8K/32K/64K are the formal hardware-acceptance gates.
+  This Windows SM75 release intentionally pins the historical Qwen3.8 container-v2 artifact at
+  revision 3526913004b1cf552cb57b88d6a5c6f5e4a89a70. Upstream "main/latest" is now a different
+  container-v3 artifact and must NOT be substituted manually.
   Do not delete config\windows-sm75-artifacts.json; it pins the exact production artifact.
