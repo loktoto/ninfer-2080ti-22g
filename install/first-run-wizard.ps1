@@ -96,7 +96,7 @@ Set-Content -Path $KeyPath -Value $ApiKey -Encoding ASCII -NoNewline
 try {
     $CurrentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
     if (-not $CurrentSid) { throw "Current Windows user SID could not be resolved." }
-    $SystemSid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18")
+    $SystemSid = New-Object -TypeName System.Security.Principal.SecurityIdentifier -ArgumentList "S-1-5-18"
     $Acl = Get-Acl $KeyPath
     $Acl.SetAccessRuleProtection($true,$false)
     foreach ($Rule in @($Acl.Access)) { [void]$Acl.RemoveAccessRuleSpecific($Rule) }
