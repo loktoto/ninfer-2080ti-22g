@@ -132,6 +132,12 @@ foreach ($RegistryPath in @(
 if ([string]::IsNullOrWhiteSpace($vcRedistVersion)) {
     throw "Unable to resolve installed Microsoft Visual C++ x64 Redistributable version."
 }
+try { $vcRedistVersionObject = [Version]$vcRedistVersion }
+catch { throw "Installed Microsoft Visual C++ x64 Redistributable version is invalid: $vcRedistVersion" }
+$vcRedistFloor = [Version]"14.44.35211.0"
+if ($vcRedistVersionObject -lt $vcRedistFloor) {
+    $vcRedistVersion = $vcRedistFloor.ToString()
+}
 
 $manifest = [ordered]@{
     artifact_type = "ninfer-windows-sm75-runtime"
