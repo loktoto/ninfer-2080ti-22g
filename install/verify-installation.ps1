@@ -23,6 +23,9 @@ $Required = @(
     "bin\ninfer-serve.exe",
     "config\windows-sm75-artifacts.json",
     "config\production-defaults.json",
+    "config\windows-sm75-toolchain.json",
+    "BUILD-TOOLCHAIN.json",
+    "SBOM.cdx.json",
     "scripts\download-qwen38-windows-sm75.ps1",
     "scripts\healthcheck-windows-sm75.ps1",
     "scripts\manage-installed-server.ps1",
@@ -104,6 +107,49 @@ if (Test-Path $ManifestPath -PathType Leaf) {
             Fail "Windows release is not marked as static CUDA runtime linkage."
         } elseif ($Manifest.cuda_runtime_linkage -eq "static") {
             Pass "CUDA runtime statically linked"
+        }
+
+        $ToolchainLockPath = Join-Path $Root "config\windows-sm75-toolchain.json"
+        $ToolchainRecordPath = Join-Path $Root "BUILD-TOOLCHAIN.json"
+        if (-not (Test-Path $ToolchainLockPath -PathType Leaf)) {
+            Fail "Production toolchain lock missing"
+        } elseif (-not (Test-Path $ToolchainRecordPath -PathType Leaf)) {
+            Fail "BUILD-TOOLCHAIN.json missing"
+        } else {
+            try {
+                $ToolchainLock = Get-Content $ToolchainLockPath -Raw | ConvertFrom-Json
+                $ToolchainRecord = Get-Content $ToolchainRecordPath -Raw | ConvertFrom-Json
+                $ToolchainLockHash = (Get-FileHash $ToolchainLockPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ([string]$Manifest.toolchain_lock_sha256 -ne $ToolchainLockHash) {
+                    Fail "BUILD-MANIFEST toolchain lock hash mismatch"
+                } elseif ([string]$ToolchainRecord.toolchain_lock_sha256 -ne $ToolchainLockHash) {
+                    Fail "BUILD-TOOLCHAIN toolchain lock hash mismatch"
+                } else {
+                    $Drift = @()
+                    foreach ($Name in @("msvc_toolset","msvc_compiler","windows_sdk","cuda_compiler","cmake","ninja","vcpkg_commit")) {
+                        $ExpectedValue = [string]$ToolchainLock.$Name
+                        if ([string]$ToolchainRecord.$Name -ne $ExpectedValue -or [string]$Manifest.$Name -ne $ExpectedValue) {
+                            $Drift += $Name
+                        }
+                    }
+                    if ($Drift.Count -gt 0) { Fail "Toolchain provenance drift: $($Drift -join ', ')" }
+                    else { Pass "Toolchain lock / build record / manifest agree" }
+                }
+            } catch { Fail "Toolchain provenance metadata invalid: $($_.Exception.Message)" }
+        }
+
+        $SbomPath = Join-Path $Root "SBOM.cdx.json"
+        if (-not (Test-Path $SbomPath -PathType Leaf)) {
+            Fail "CycloneDX SBOM missing"
+        } else {
+            try {
+                $Sbom = Get-Content $SbomPath -Raw | ConvertFrom-Json
+                if ($Sbom.bomFormat -ne "CycloneDX" -or [string]$Sbom.specVersion -ne "1.5") {
+                    Fail "Unexpected SBOM contract"
+                } else {
+                    Pass "CycloneDX 1.5 SBOM present"
+                }
+            } catch { Fail "SBOM JSON invalid: $($_.Exception.Message)" }
         }
     } catch { Fail "BUILD-MANIFEST.json is invalid: $($_.Exception.Message)" }
 } else {
