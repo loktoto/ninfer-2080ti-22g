@@ -2,8 +2,6 @@ name: SM75 build and contract tests
 
 on:
   pull_request:
-    branches:
-      - master
 
 concurrency:
   group: sm75-${{ github.event.pull_request.number || github.ref }}
