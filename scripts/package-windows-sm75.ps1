@@ -193,8 +193,8 @@ $SbomScript = Join-Path $RepoRoot "scripts\generate-windows-sm75-sbom.ps1"
 if (-not (Test-Path $SbomScript -PathType Leaf)) { throw "SBOM generator not found: $SbomScript" }
 $SbomPath = Join-Path $StagePath "SBOM.cdx.json"
 & $SbomScript -OutputPath $SbomPath -VcpkgRoot $vcpkgRoot -GitSha $gitSha -CudaVersion ([string]$ToolchainRecord.cuda_compiler)
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path $SbomPath -PathType Leaf)) {
-    throw "CycloneDX SBOM generation failed."
+if (-not (Test-Path $SbomPath -PathType Leaf)) {
+    throw "CycloneDX SBOM generator returned without producing the expected output file."
 }
 
 $checksumPath = Join-Path $StagePath "SHA256SUMS.txt"
