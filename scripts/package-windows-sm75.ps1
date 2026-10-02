@@ -9,6 +9,16 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
+$DistributionValidator = Join-Path $RepoRoot "scripts\validate-windows-sm75-distribution-contract.ps1"
+if (-not (Test-Path $DistributionValidator -PathType Leaf)) {
+    throw "Distribution contract validator not found: $DistributionValidator"
+}
+& $DistributionValidator
+if ($LASTEXITCODE -ne 0) { throw "Distribution source contract validation failed." }
+
+$DistributionSourcePath = Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json"
+$DistributionContract = Get-Content $DistributionSourcePath -Raw | ConvertFrom-Json
+
 function Get-PackageRelativePath([string]$BasePath, [string]$FilePath) {
     $BaseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd([char[]]"\/")
     $FileFull = [IO.Path]::GetFullPath($FilePath)
@@ -41,50 +51,37 @@ $DocsDir = Join-Path $StagePath "docs"
 New-Item -ItemType Directory -Force -Path $DocsDir | Out-Null
 Copy-Item (Join-Path $RepoRoot "README.md") (Join-Path $StagePath "README.md") -Force
 Copy-Item (Join-Path $RepoRoot "LICENSE") (Join-Path $StagePath "LICENSE") -Force
-Copy-Item (Join-Path $RepoRoot "docs\windows-sm75.md") (Join-Path $DocsDir "windows-sm75.md") -Force
-Copy-Item (Join-Path $RepoRoot "docs\INSTALL-WINDOWS-SM75.md") (Join-Path $DocsDir "INSTALL-WINDOWS-SM75.md") -Force
+foreach ($Name in @($DistributionContract.docs_files)) {
+    $Name = [string]$Name
+    Copy-Item (Join-Path $RepoRoot "docs\$Name") (Join-Path $DocsDir $Name) -Force
+}
 
 $ConfigDir = Join-Path $StagePath "config"
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
-Copy-Item (Join-Path $RepoRoot "config\windows-sm75-artifacts.json") (Join-Path $ConfigDir "windows-sm75-artifacts.json") -Force
-Copy-Item (Join-Path $RepoRoot "config\production-defaults.json") (Join-Path $ConfigDir "production-defaults.json") -Force
-Copy-Item (Join-Path $RepoRoot "config\windows-sm75-toolchain.json") (Join-Path $ConfigDir "windows-sm75-toolchain.json") -Force
-Copy-Item (Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json") (Join-Path $ConfigDir "windows-sm75-distribution-contract.json") -Force
+foreach ($Name in @($DistributionContract.config_files)) {
+    $Name = [string]$Name
+    Copy-Item (Join-Path $RepoRoot "config\$Name") (Join-Path $ConfigDir $Name) -Force
+}
 
 $RuntimeScriptsDir = Join-Path $StagePath "scripts"
 New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
-@(
-    "run-server-windows-sm75.ps1",
-    "healthcheck-windows-sm75.ps1",
-    "smoke-test-windows-sm75.ps1",
-    "acceptance-windows-sm75.ps1",
-    "download-qwen38-windows-sm75.ps1",
-    "manage-installed-server.ps1",
-    "verify-acceptance-evidence.ps1",
-    "verify-windows-sm75.ps1"
-) | ForEach-Object {
-    Copy-Item (Join-Path $RepoRoot "scripts\$_") (Join-Path $RuntimeScriptsDir $_) -Force
+foreach ($Name in @($DistributionContract.runtime_scripts)) {
+    $Name = [string]$Name
+    Copy-Item (Join-Path $RepoRoot "scripts\$Name") (Join-Path $RuntimeScriptsDir $Name) -Force
 }
 
 $InstallerDir = Join-Path $StagePath "install"
 New-Item -ItemType Directory -Force -Path $InstallerDir | Out-Null
-@(
-    "START-HERE.bat",
-    "README-FIRST.txt",
-    "install-ninfer-sm75.ps1",
-    "install-ninfer-sm75.bat",
-    "first-run-wizard.ps1",
-    "verify-installation.ps1",
-    "repair-ninfer-sm75.ps1",
-    "uninstall-ninfer-sm75.ps1"
-) | ForEach-Object {
-    Copy-Item (Join-Path $RepoRoot "install\$_") (Join-Path $InstallerDir $_) -Force
+foreach ($Name in @($DistributionContract.installer_files)) {
+    $Name = [string]$Name
+    Copy-Item (Join-Path $RepoRoot "install\$Name") (Join-Path $InstallerDir $Name) -Force
 }
 
 $LaunchersDir = Join-Path $StagePath "launchers"
 New-Item -ItemType Directory -Force -Path $LaunchersDir | Out-Null
-Get-ChildItem (Join-Path $RepoRoot "launchers") -Filter *.bat -File | ForEach-Object {
-    Copy-Item $_.FullName (Join-Path $LaunchersDir $_.Name) -Force
+foreach ($Name in @($DistributionContract.launcher_files)) {
+    $Name = [string]$Name
+    Copy-Item (Join-Path $RepoRoot "launchers\$Name") (Join-Path $LaunchersDir $Name) -Force
 }
 
 Copy-Item (Join-Path $RepoRoot "install\START-HERE.bat") (Join-Path $StagePath "START-HERE.bat") -Force
