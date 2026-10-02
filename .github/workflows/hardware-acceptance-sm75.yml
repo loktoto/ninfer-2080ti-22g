@@ -69,7 +69,13 @@ jobs:
           if ($entries.Count -ne 1 -or -not $entries[0].PSIsContainer) {
             throw "Qualified ZIP must contain exactly one top-level directory."
           }
-          $installDir = Resolve-Path -Relative $entries[0].FullName
+          $repoRoot = (Resolve-Path ".").Path.TrimEnd("\")
+          $qualifiedRoot = [IO.Path]::GetFullPath($entries[0].FullName)
+          $prefix = $repoRoot + "\"
+          if (-not $qualifiedRoot.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) {
+            throw "Qualified runtime extracted outside repository workspace."
+          }
+          $installDir = $qualifiedRoot.Substring($prefix.Length)
 
           .\scripts\acceptance-windows-sm75.ps1 `
             -Model $model `
