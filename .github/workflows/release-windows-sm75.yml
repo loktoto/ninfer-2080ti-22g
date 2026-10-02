@@ -85,7 +85,7 @@ jobs:
 
       - name: Verify executable startup
         shell: pwsh
-        run: .\scripts\verify-windows-sm75.ps1
+        run: .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
 
       - name: Package release
         shell: pwsh
@@ -103,7 +103,7 @@ jobs:
           } | ForEach-Object {
             [void][ScriptBlock]::Create((Get-Content $_.FullName -Raw))
           }
-          .\scripts\verify-windows-sm75.ps1
+          .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
           .\scripts\package-windows-sm75.ps1
           .\scripts\verify-package-windows-sm75.ps1
 

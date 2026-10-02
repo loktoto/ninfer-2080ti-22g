@@ -25,6 +25,11 @@ jobs:
       - name: Checkout exact commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Activate MSVC 2022
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
       - name: Validate runner identity
         shell: powershell
         run: |
@@ -44,7 +49,7 @@ jobs:
       - name: Verify and package runtime
         shell: powershell
         run: |
-          .\scripts\verify-windows-sm75.ps1
+          .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
           .\scripts\package-windows-sm75.ps1
           .\scripts\verify-package-windows-sm75.ps1
 
