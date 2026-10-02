@@ -125,7 +125,7 @@ foreach ($RegistryPath in @(
     if (-not (Test-Path $RegistryPath)) { continue }
     $Runtime = Get-ItemProperty $RegistryPath -ErrorAction SilentlyContinue
     if ($Runtime -and [int]$Runtime.Installed -eq 1 -and -not [string]::IsNullOrWhiteSpace([string]$Runtime.Version)) {
-        $vcRedistVersion = ([string]$Runtime.Version).TrimStart("v","V")
+        $vcRedistVersion = ([string]$Runtime.Version).TrimStart([char[]]"vV")
         break
     }
 }
