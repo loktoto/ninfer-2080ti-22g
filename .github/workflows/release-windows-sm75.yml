@@ -21,7 +21,7 @@ permissions:
 jobs:
   release:
     runs-on: windows-2022
-    timeout-minutes: 360
+    timeout-minutes: 60
     steps:
       - name: Validate release inputs
         shell: pwsh
@@ -33,69 +33,88 @@ jobs:
             throw "acceptance_run_id must be a numeric GitHub Actions run ID."
           }
 
-      - name: Checkout
+      - name: Checkout exact release commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Download and verify physical-GPU evidence
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $runId = "${{ inputs.acceptance_run_id }}"
-          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$runId" | ConvertFrom-Json
-          if ($run.conclusion -ne "success") { throw "Acceptance run $runId did not succeed." }
-          if ($run.name -ne "RTX 2080 Ti SM75 hardware acceptance") { throw "Run $runId is not the SM75 hardware-acceptance workflow." }
-          if ($run.head_sha -ne $env:GITHUB_SHA) { throw "Acceptance run SHA $($run.head_sha) does not match release SHA $env:GITHUB_SHA." }
-          gh run download $runId -n ninfer-sm75-acceptance -D acceptance-proof
-          if ($LASTEXITCODE -ne 0) { throw "Failed to download hardware-acceptance evidence." }
-          $evidence = Get-ChildItem .\acceptance-proof -Recurse -Filter "windows-sm75-*.json" -File |
-            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-          if (-not $evidence) { throw "Acceptance evidence JSON is missing." }
-          .\scripts\verify-acceptance-evidence.ps1 -EvidencePath $evidence.FullName -ExpectedGitSha $env:GITHUB_SHA -LockPath .\config\windows-sm75-artifacts.json
-          New-Item -ItemType Directory -Force .\release-evidence | Out-Null
-          Copy-Item $evidence.FullName .\release-evidence\HARDWARE-ACCEPTANCE.json -Force
-
-      - name: Activate MSVC 2022
+      - name: Activate MSVC 2022 dependency tools
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
 
-      - name: Install CUDA 13.1 toolkit
-        uses: ggml-org/llama.cpp/.github/actions/windows-setup-cuda@e904318a2d3e2382e78c98b4353c5dd569c079f6
-        with:
-          cuda_version: "13.1"
-          cuda_arch: "75"
-
-      - name: Install Ninja
+      - name: Fetch exact hardware-qualified package
         shell: pwsh
-        run: choco install ninja --no-progress -y
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          [long]$runId = [long]"${{ inputs.acceptance_run_id }}"
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$runId" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Unable to read hardware acceptance run $runId." }
+          if ($run.name -ne "RTX 2080 Ti SM75 hardware acceptance") {
+            throw "Run $runId is not the SM75 hardware-acceptance workflow."
+          }
+          if ($run.event -ne "workflow_dispatch") {
+            throw "Hardware acceptance must come from an explicit workflow_dispatch run."
+          }
+          if ($run.conclusion -ne "success") {
+            throw "Hardware acceptance run $runId did not conclude successfully."
+          }
+          if ($run.head_sha -ne $env:GITHUB_SHA) {
+            throw "Hardware acceptance SHA $($run.head_sha) does not match release SHA $env:GITHUB_SHA."
+          }
 
-      - name: Cache vcpkg build products
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            .deps/vcpkg/downloads
-            .deps/vcpkg/installed
-            ~/AppData/Local/vcpkg/archives
-          key: vcpkg-sm75-${{ runner.os }}-b3ae22aef2b857af6e80d756c13f15db12be4e8a
+          $artifactName = "ninfer-windows-sm75-qualified-$env:GITHUB_SHA"
+          Remove-Item .\qualified -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force .\qualified | Out-Null
+          gh run download $runId --name $artifactName --dir .\qualified
+          if ($LASTEXITCODE -ne 0) { throw "Failed to download qualified artifact $artifactName." }
 
-      - name: Build production runtime
-        shell: pwsh
-        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2
+          $zips = @(Get-ChildItem .\qualified -Recurse -Filter "ninfer-windows-sm75-*.zip" -File)
+          if ($zips.Count -ne 1) { throw "Expected exactly one qualified ZIP; found $($zips.Count)." }
+          $zip = $zips[0]
 
-      - name: Verify executable startup
-        shell: pwsh
-        run: .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
+          $evidenceFiles = @(Get-ChildItem .\qualified -Recurse -Filter "windows-sm75-*.json" -File |
+            Where-Object { $_.Directory.Name -eq "acceptance" })
+          $validEvidence = @()
+          foreach ($candidate in $evidenceFiles) {
+            try {
+              $parsed = Get-Content $candidate.FullName -Raw | ConvertFrom-Json
+              if ($parsed.schema_version -eq 2 -and
+                  $parsed.artifact_type -eq "ninfer_windows_sm75_hardware_acceptance") {
+                $validEvidence += $candidate
+              }
+            } catch {}
+          }
+          if ($validEvidence.Count -ne 1) {
+            throw "Expected exactly one schema-v2 hardware acceptance JSON; found $($validEvidence.Count)."
+          }
+          $evidence = $validEvidence[0]
 
-      - name: Package release
-        shell: pwsh
-        run: .\scripts\package-windows-sm75.ps1
+          foreach ($sidecar in @("$($zip.FullName).sha256", "$($zip.FullName).sbom.cdx.json")) {
+            if (-not (Test-Path $sidecar -PathType Leaf)) { throw "Qualified artifact sidecar missing: $sidecar" }
+          }
 
-      - name: Verify release package integrity
+          .\scripts\verify-acceptance-evidence.ps1 `
+            -EvidencePath $evidence.FullName `
+            -ExpectedGitSha $env:GITHUB_SHA `
+            -PackagePath $zip.FullName `
+            -LockPath .\config\windows-sm75-artifacts.json
+
+          Remove-Item .\dist -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force .\dist | Out-Null
+          Copy-Item $zip.FullName .\dist -Force
+          Copy-Item "$($zip.FullName).sha256" .\dist -Force
+          Copy-Item "$($zip.FullName).sbom.cdx.json" .\dist -Force
+
+          Remove-Item .\release-evidence -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force .\release-evidence | Out-Null
+          Copy-Item $evidence.FullName .\release-evidence\HARDWARE-ACCEPTANCE.json -Force
+
+      - name: Verify qualified release package
         shell: pwsh
         run: .\scripts\verify-package-windows-sm75.ps1
 
-      - name: Validate Windows PowerShell 5.1 package path
+      - name: Validate release verification under Windows PowerShell 5.1
         shell: powershell
         run: |
           @(".\scripts",".\install") | ForEach-Object {
@@ -103,40 +122,59 @@ jobs:
           } | ForEach-Object {
             [void][ScriptBlock]::Create((Get-Content $_.FullName -Raw))
           }
-          .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
-          .\scripts\package-windows-sm75.ps1
           .\scripts\verify-package-windows-sm75.ps1
 
-      - name: Add verified hardware evidence to release assets
+      - name: Resolve exact qualified paths
+        id: qualified
         shell: pwsh
-        run: Copy-Item .\release-evidence\HARDWARE-ACCEPTANCE.json .\dist\HARDWARE-ACCEPTANCE.json -Force
+        run: |
+          $zips = @(Get-ChildItem .\dist -Filter "ninfer-windows-sm75-*.zip" -File)
+          if ($zips.Count -ne 1) { throw "Expected exactly one release ZIP." }
+          $zip = $zips[0]
+          $sbom = "$($zip.FullName).sbom.cdx.json"
+          if (-not (Test-Path $sbom -PathType Leaf)) { throw "Release SBOM missing: $sbom" }
+          "zip=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+          "sbom=$sbom" >> $env:GITHUB_OUTPUT
 
-      - name: Attest release artifacts
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+      - name: Attest build provenance for qualified ZIP
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: |
-            dist/*.zip
-            dist/*.sha256
-            dist/HARDWARE-ACCEPTANCE.json
+          subject-path: ${{ steps.qualified.outputs.zip }}
+
+      - name: Attest CycloneDX SBOM for qualified ZIP
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: ${{ steps.qualified.outputs.zip }}
+          sbom-path: ${{ steps.qualified.outputs.sbom }}
 
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = "Stop"
           $tag = "${{ inputs.tag }}"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
-          $assets = @(Get-ChildItem .\dist -File | Where-Object {
-            $_.Name -like "ninfer-windows-sm75-*.zip" -or
-            $_.Name -like "ninfer-windows-sm75-*.zip.sha256" -or
-            $_.Name -eq "HARDWARE-ACCEPTANCE.json"
-          } | Sort-Object Name | ForEach-Object { $_.FullName })
-          if ($assets.Count -lt 3) { throw "Expected ZIP, SHA-256 and hardware evidence assets." }
+
+          $assets = @(
+            Get-ChildItem .\dist -File | Where-Object {
+              $_.Name -like "ninfer-windows-sm75-*.zip" -or
+              $_.Name -like "ninfer-windows-sm75-*.zip.sha256" -or
+              $_.Name -like "ninfer-windows-sm75-*.zip.sbom.cdx.json"
+            } | Sort-Object Name | ForEach-Object { $_.FullName }
+          )
+          $assets += (Resolve-Path .\release-evidence\HARDWARE-ACCEPTANCE.json).Path
+          if ($assets.Count -ne 4) {
+            throw "Expected qualified ZIP, SHA-256, SBOM and hardware acceptance evidence."
+          }
+
           $releaseArgs = @("release", "create", $tag) + $assets + @(
             "--target", $env:GITHUB_SHA,
             "--title", "NInfer Windows SM75 $tag",
-            "--notes", "Native Windows RTX 2080 Ti / Turing SM75 production package. Physical GPU evidence was machine-verified against this exact commit and model lock; build provenance attestations were generated before publication."
+            "--notes", "Native Windows RTX 2080 Ti / Turing SM75 package. The published ZIP is the exact binary qualified by the referenced physical-hardware acceptance run; GitHub build-provenance and CycloneDX SBOM attestations are generated before publication."
           )
           & gh @releaseArgs
-          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed with exit code $LASTEXITCODE." }
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release publication failed with exit code $LASTEXITCODE."
+          }

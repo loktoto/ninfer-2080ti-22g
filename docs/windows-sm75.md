@@ -94,8 +94,7 @@ To verify an existing file without downloading:
 This check does not need a GPU or model artifact. It audits every packaged PE dependency, rejects
 a dynamic CUDA runtime import, requires non-system DLLs to be present beside the executables, then
 launches both programs with PATH reduced to the package bin directory plus Windows system paths.
-CI, hardware qualification and release validation require `dumpbin.exe` so the dependency audit
-cannot silently skip:
+CI and release validation require `dumpbin.exe` so the dependency audit cannot silently skip:
 
 ```powershell
 .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
@@ -113,6 +112,7 @@ The package step emits:
 dist/
 ├─ ninfer-windows-sm75-<git-sha>.zip
 ├─ ninfer-windows-sm75-<git-sha>.zip.sha256
+├─ ninfer-windows-sm75-<git-sha>.zip.sbom.cdx.json
 └─ ninfer-windows-sm75-<git-sha>/
    ├─ bin/
    │  ├─ ninfer.exe
@@ -148,6 +148,7 @@ dist/
    │  ├─ windows-sm75-artifacts.json
    │  └─ production-defaults.json
    ├─ BUILD-MANIFEST.json
+   ├─ SBOM.cdx.json
    ├─ SHA256SUMS.txt
    ├─ README.md
    └─ LICENSE
@@ -214,15 +215,20 @@ uses `NINFER_API_KEY`, or pass `-ApiKey` explicitly.
 
 ## Hardware acceptance sequence
 
-Run the automated acceptance harness first:
+Production acceptance is bound to a concrete release ZIP. Package first, then run:
 
 ```powershell
-.\scripts\acceptance-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
+$zip = Get-ChildItem .\dist -Filter "ninfer-windows-sm75-*.zip" | Select-Object -First 1
+.\scripts\acceptance-windows-sm75.ps1 `
+  -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer" `
+  -PackagePath $zip.FullName
 ```
 
-It performs the SM75/VRAM preflight, 8K smoke test, **needle-in-a-haystack semantic retrieval**
-near 8K/32K/64K, OpenAI tool-call path validation, and deterministic **MTP0/MTP3 generated-token-ID
-parity**. It writes a structured JSON evidence record plus server diagnostics under `acceptance\`.
+The self-hosted workflow goes one step further: it expands that ZIP and runs the full acceptance
+suite against the binaries extracted from the qualified package. The harness performs the
+SM75/VRAM preflight, 8K smoke test, **needle-in-a-haystack semantic retrieval** near 8K/32K/64K,
+OpenAI tool-call path validation, and deterministic **MTP0/MTP3 generated-token-ID parity**. The
+evidence records the source Git SHA, pinned model SHA-256 and exact qualified ZIP filename/size/SHA-256.
 
 Validate an evidence file independently with:
 
@@ -230,6 +236,7 @@ Validate an evidence file independently with:
 .\scripts\verify-acceptance-evidence.ps1 `
   -EvidencePath .\acceptance\windows-sm75-<timestamp>.json `
   -ExpectedGitSha <exact-git-sha> `
+  -PackagePath $zip.FullName `
   -LockPath .\config\windows-sm75-artifacts.json
 ```
 
@@ -264,7 +271,7 @@ build + install stage
           ↓
 ninfer.exe --help / ninfer-serve.exe --help
           ↓
-ZIP + SHA-256 package
+ZIP + SHA-256 + CycloneDX SBOM
           ↓
 GitHub Actions artifact
 ```
@@ -280,8 +287,10 @@ as a GitHub self-hosted runner and add the custom runner label `sm75`. The runne
 22GB RTX 2080 Ti and have the same VS2022/CUDA/CMake/Ninja prerequisites as the local build.
 
 Run **RTX 2080 Ti SM75 hardware acceptance**. The workflow performs a clean production build,
-packages it, runs the full semantic/MTP/tool-call acceptance suite, independently verifies the
-evidence, and uploads a `ninfer-sm75-acceptance` artifact retained for 90 days.
+packages and verifies it, expands that exact ZIP, runs the full semantic/MTP/tool-call acceptance
+suite against the extracted binaries, independently verifies the ZIP-bound evidence, and uploads a
+`ninfer-windows-sm75-qualified-<git-sha>` artifact containing the ZIP, SHA-256, CycloneDX SBOM and
+hardware evidence. The qualification artifact is retained for 90 days.
 
 ## Publishing a release
 
@@ -292,9 +301,11 @@ checkbox. Run **Release Windows SM75** and provide:
 - the numeric run ID of a successful **RTX 2080 Ti SM75 hardware acceptance** workflow for the
   exact same Git commit.
 
-The release workflow downloads that run's evidence and machine-verifies the commit SHA, pinned model
-SHA-256, GPU identity, VRAM, 8K/32K/64K NIAH results, MTP token-ID parity, and tool-call result. It
-then performs a fresh hosted Windows build, verifies/package-checks the runtime, adds the hardware
-evidence to the release assets, and creates a GitHub build-provenance attestation before publishing.
+The release workflow does **not** rebuild the runtime. It downloads the exact qualified artifact from
+that run, machine-verifies the commit SHA, pinned model SHA-256, ZIP SHA-256, GPU identity, VRAM,
+8K/32K/64K NIAH results, MTP token-ID parity and tool-call result, then re-runs package/dependency
+verification on the same ZIP. It creates GitHub build-provenance and CycloneDX SBOM attestations
+for that exact binary before publishing the ZIP, checksum, SBOM and hardware evidence.
 
-Compile-only CI can never auto-publish a production release.
+Compile-only CI can never auto-publish a production release, and a different rebuild cannot be
+substituted for the hardware-qualified bytes.
