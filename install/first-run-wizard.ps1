@@ -3,7 +3,7 @@ param(
     [string]$ModelDir = "",
     [ValidateRange(1,65535)]
     [int]$Port = 8080,
-    [ValidateRange(1024,262144)]
+    [ValidateRange(1024,131072)]
     [int]$MaxContext = 16384,
     [ValidateRange(-1,15)]
     [int]$Device = -1,
@@ -72,8 +72,10 @@ if ($Device -lt 0) {
 }
 $Selected = @($Gpus | Where-Object { $_.Index -eq $Device }) | Select-Object -First 1
 if (-not $Selected) { throw "GPU index $Device was not reported by nvidia-smi." }
-if ($Selected.ComputeCapability -ne "7.5" -or $Selected.VramMiB -lt 20000 -or $Selected.Name -notmatch "2080\s*Ti") {
-    throw "GPU $Device is not the production target: $($Selected.Name), CC $($Selected.ComputeCapability), $($Selected.VramMiB) MiB."
+$SelectedDriverMajor = 0
+try { $SelectedDriverMajor = [int](($Selected.Driver -split "\.")[0]) } catch {}
+if ($Selected.ComputeCapability -ne "7.5" -or $Selected.VramMiB -lt 20000 -or $Selected.Name -notmatch "2080\s*Ti" -or $SelectedDriverMajor -lt 580) {
+    throw "GPU $Device is not the production target: required RTX 2080 Ti / CC 7.5 / 20GB+ VRAM / R580+ driver; detected $($Selected.Name), CC $($Selected.ComputeCapability), $($Selected.VramMiB) MiB, driver $($Selected.Driver)."
 }
 
 $Downloader = Join-Path $Root "scripts\download-qwen38-windows-sm75.ps1"
