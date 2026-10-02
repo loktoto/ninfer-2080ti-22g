@@ -22,6 +22,11 @@ if ($ActualOuter -ne $ExpectedOuter) {
     throw "ZIP SHA-256 mismatch. Expected $ExpectedOuter, got $ActualOuter."
 }
 
+$ExternalSbom = "$($Zip.FullName).sbom.cdx.json"
+if (-not (Test-Path $ExternalSbom -PathType Leaf)) {
+    throw "Missing external CycloneDX SBOM: $ExternalSbom"
+}
+
 $TempRoot = Join-Path ([IO.Path]::GetTempPath()) ("ninfer-sm75-verify-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $TempRoot | Out-Null
 try {
@@ -50,6 +55,34 @@ try {
     }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.artifact_lock_sha256)) {
         throw "Build manifest is missing artifact_lock_sha256."
+    }
+
+    $SbomPath = Join-Path $Stage.FullName "SBOM.cdx.json"
+    if (-not (Test-Path $SbomPath -PathType Leaf)) { throw "SBOM.cdx.json missing from package." }
+    $Sbom = Get-Content $SbomPath -Raw | ConvertFrom-Json
+    if ($Sbom.bomFormat -ne "CycloneDX" -or $Sbom.specVersion -ne "1.5") {
+        throw "Unexpected SBOM format/version."
+    }
+    if ($Sbom.metadata.component.name -ne "ninfer-windows-sm75") {
+        throw "Unexpected SBOM root component: $($Sbom.metadata.component.name)"
+    }
+    if ([string]$Sbom.metadata.component.version -ne [string]$Manifest.git_sha) {
+        throw "SBOM root version does not match BUILD-MANIFEST git_sha."
+    }
+    $CudaComponents = @($Sbom.components | Where-Object { $_.name -eq "NVIDIA CUDA Runtime" })
+    if ($CudaComponents.Count -ne 1) {
+        throw "SBOM must contain exactly one NVIDIA CUDA Runtime component."
+    }
+    $StaticLink = @($CudaComponents[0].properties | Where-Object {
+        $_.name -eq "ninfer:linkage" -and $_.value -eq "static"
+    })
+    if ($StaticLink.Count -ne 1) {
+        throw "SBOM does not record static CUDA runtime linkage."
+    }
+    $InternalSbomHash = (Get-FileHash $SbomPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $ExternalSbomHash = (Get-FileHash $ExternalSbom -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($InternalSbomHash -ne $ExternalSbomHash) {
+        throw "External SBOM does not match the SBOM embedded in the release ZIP."
     }
 
     $LockPath = Join-Path $Stage.FullName "config\windows-sm75-artifacts.json"
@@ -124,6 +157,7 @@ try {
         "scripts\verify-windows-sm75.ps1",
         "config\windows-sm75-artifacts.json",
         "config\production-defaults.json",
+        "SBOM.cdx.json",
         "docs\INSTALL-WINDOWS-SM75.md",
         "install\install-ninfer-sm75.ps1",
         "install\install-ninfer-sm75.bat",

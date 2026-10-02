@@ -33,6 +33,7 @@ $ZipPath = Join-Path $DistPath "$PackageName.zip"
 if (Test-Path $StagePath) { Remove-Item -Recurse -Force $StagePath }
 if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
 if (Test-Path "$ZipPath.sha256") { Remove-Item -Force "$ZipPath.sha256" }
+if (Test-Path "$ZipPath.sbom.cdx.json") { Remove-Item -Force "$ZipPath.sbom.cdx.json" }
 New-Item -ItemType Directory -Force -Path $DistPath | Out-Null
 Copy-Item $InstallPath $StagePath -Recurse -Force
 
@@ -140,6 +141,14 @@ $manifest = [ordered]@{
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $StagePath "BUILD-MANIFEST.json") -Encoding UTF8
 
+$SbomScript = Join-Path $RepoRoot "scripts\generate-windows-sm75-sbom.ps1"
+if (-not (Test-Path $SbomScript -PathType Leaf)) { throw "SBOM generator not found: $SbomScript" }
+$SbomPath = Join-Path $StagePath "SBOM.cdx.json"
+& $SbomScript -OutputPath $SbomPath -VcpkgRoot $vcpkgRoot -GitSha $gitSha -CudaVersion $cudaVersion
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $SbomPath -PathType Leaf)) {
+    throw "CycloneDX SBOM generation failed."
+}
+
 $checksumPath = Join-Path $StagePath "SHA256SUMS.txt"
 $entries = Get-ChildItem $StagePath -Recurse -File |
     Where-Object { $_.FullName -ne $checksumPath } |
@@ -154,8 +163,10 @@ $entries | Set-Content $checksumPath -Encoding ASCII
 Compress-Archive -Path $StagePath -DestinationPath $ZipPath -CompressionLevel Optimal
 $zipHash = (Get-FileHash $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
 Set-Content "$ZipPath.sha256" "$zipHash  $([IO.Path]::GetFileName($ZipPath))" -Encoding ASCII
+Copy-Item $SbomPath "$ZipPath.sbom.cdx.json" -Force
 
 Write-Host "Package created:"
 Write-Host "  $ZipPath"
 Write-Host "  $ZipPath.sha256"
+Write-Host "  $ZipPath.sbom.cdx.json"
 Write-Host "  Manifest schema: $($manifest.schema_version)"
