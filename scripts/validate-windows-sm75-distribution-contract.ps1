@@ -37,6 +37,29 @@ foreach ($Field in @("config_files","runtime_scripts","installer_files","launche
     Assert-UniqueList $Contract.$Field $Field
 }
 
+$RequiredSet = @{}
+foreach ($Required in @($Contract.required_package_files)) {
+    $Unix = Assert-SafeRelativePath ([string]$Required)
+    $RequiredSet[$Unix.ToLowerInvariant()] = $true
+}
+
+function Assert-RequiredMembership($Values,[string]$Prefix,[string]$Label) {
+    foreach ($Value in @($Values)) {
+        $Leaf = Assert-SafeRelativePath ([string]$Value)
+        $Relative = if ([string]::IsNullOrWhiteSpace($Prefix)) { $Leaf } else { "$Prefix/$Leaf" }
+        if (-not $RequiredSet.ContainsKey($Relative.ToLowerInvariant())) {
+            throw "$Label entry is not present in required_package_files: $Relative"
+        }
+    }
+}
+
+Assert-RequiredMembership $Contract.config_files "config" "config_files"
+Assert-RequiredMembership $Contract.runtime_scripts "scripts" "runtime_scripts"
+Assert-RequiredMembership $Contract.installer_files "install" "installer_files"
+Assert-RequiredMembership $Contract.launcher_files "launchers" "launcher_files"
+Assert-RequiredMembership $Contract.docs_files "docs" "docs_files"
+Assert-RequiredMembership $Contract.installer_root_files "" "installer_root_files"
+
 $GeneratedPackage = @(
     "bin/ninfer.exe",
     "bin/ninfer-serve.exe",
