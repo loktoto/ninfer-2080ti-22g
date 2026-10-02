@@ -5,8 +5,10 @@ set -Eeuo pipefail
 #
 # This deliberately distinguishes a successful allocator/runtime fit from a
 # performance claim. A context size is only printed as PASS after NInfer has
-# loaded the artifact, resolved the compressed KV capacity, and generated a
-# token on the selected device.
+# loaded the artifact, reserved that exact KV token capacity, and generated a
+# token on the selected device. Do not use --kv-capacity auto here: automatic
+# sizing is allowed to resolve below --max-context and would make a large-context
+# allocation probe report false positives.
 #
 # Usage:
 #   ./bench/targets/qwen3_6_27b/sm75_rk4v4e8_probe.sh MODEL.ninfer [NINFER_BIN]
@@ -71,7 +73,7 @@ run_probe() {
   "${BIN}" "${MODEL}" \
     --prompt "Reply with exactly: OK" \
     --max-context "${context}" \
-    --kv-capacity auto \
+    --kv-capacity "${context}" \
     --prefill-chunk "${PREFILL_CHUNK}" \
     --kv-dtype rk4v4-e8 \
     --device "${DEVICE}" \
@@ -104,8 +106,8 @@ for context in ${CONTEXTS}; do
     highest_base=${context}
   else
     # Capacity is monotonic for this fixed model/storage profile. Once a larger
-    # context fails to fit, later sizes are expected to fail as well; keep the
-    # log concise instead of reloading 17 GiB weights repeatedly.
+    # explicit context reservation fails, later sizes are expected to fail as well;
+    # keep the log concise instead of reloading the weights repeatedly.
     break
   fi
 done
@@ -113,12 +115,12 @@ done
 if (( MTP_DRAFT > 0 && highest_base > 0 )); then
   # Re-test the highest eager-fitting context with the intended fast path.
   # MTP and CUDA graph reserve additional state, so this can legitimately fail
-  # even when the eager allocator probe passed.
+  # even when the eager explicit-capacity probe passed.
   run_probe "${highest_base}" "mtp${MTP_DRAFT}-graph" \
     --spec mtp --draft-tokens "${MTP_DRAFT}" --lm-head-draft || true
 fi
 
 echo
 echo "Results: ${SUMMARY}"
-echo "Highest eager RK4V4E8 fit observed in this run: ${highest_base} tokens"
+echo "Highest explicit RK4V4E8 fit observed in this run: ${highest_base} tokens"
 echo "Do not publish a 192K/256K ceiling unless the corresponding row is PASS on the actual 22GB card."
