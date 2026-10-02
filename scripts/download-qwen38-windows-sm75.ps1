@@ -143,8 +143,18 @@ if ($ResolvedBackend -eq "Curl") {
 $Hf = Get-Command hf.exe -ErrorAction SilentlyContinue
 if (-not $Hf) { $Hf = Get-Command hf -ErrorAction SilentlyContinue }
 if (-not $Hf) { throw "Hugging Face CLI was requested but is not installed." }
-& $Hf.Source download ([string]$Artifact.repository) ([string]$Artifact.filename) --revision ([string]$Artifact.revision) --local-dir $ResolvedModelDir
-if ($LASTEXITCODE -ne 0) { throw "Pinned artifact download failed with hf exit code $LASTEXITCODE." }
 
-$Info = Get-ArtifactVerification $ModelPath -ThrowOnFailure
-Write-Verified $Info
+$HfStage = Join-Path $ResolvedModelDir (".ninfer-hf-stage-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $HfStage | Out-Null
+try {
+    & $Hf.Source download ([string]$Artifact.repository) ([string]$Artifact.filename) --revision ([string]$Artifact.revision) --local-dir $HfStage
+    if ($LASTEXITCODE -ne 0) { throw "Pinned artifact download failed with hf exit code $LASTEXITCODE." }
+
+    $StagedModel = Join-Path $HfStage ([string]$Artifact.filename)
+    $Info = Get-ArtifactVerification $StagedModel -ThrowOnFailure
+    Move-Item $StagedModel $ModelPath -Force
+    $Info.Path = $ModelPath
+    Write-Verified $Info
+} finally {
+    Remove-Item $HfStage -Recurse -Force -ErrorAction SilentlyContinue
+}
