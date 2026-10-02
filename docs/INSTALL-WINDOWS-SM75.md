@@ -28,6 +28,8 @@ Runtime  %LOCALAPPDATA%\NInfer-SM75
 Model    <Runtime>\models\qwen3_8_27b.ninfer
 ~~~
 
+> **Artifact 警告：** 呢個 Windows SM75 channel 刻意固定使用歷史 **container v2**，revision `3526913004b1cf552cb57b88d6a5c6f5e4a89a70`。上游 Hugging Face `main/latest` 已經係另一個 container-v3 artifact；唔好手動用 latest 覆蓋懶人包下載嘅檔案。Installer 會用 exact revision + byte size + SHA-256 + container header 驗證。
+
 模型固定大小 18,210,531,328 bytes，SHA-256：
 
 ~~~text
@@ -126,7 +128,9 @@ DeepSeek Harness / Hermes 應以此 /v1 endpoint 作 custom OpenAI-compatible pr
 
 ## Repair
 
-只修 config / key / model：
+最簡單係雙擊 `launchers\Repair-NInfer.bat`；佢會重建 config/key，並喺 pinned model 遺失或損壞時重新下載，之後做完整驗證再 restart Base mode。
+
+手動只修 config / key / model：
 
 ~~~powershell
 .\install\repair-ninfer-sm75.ps1 -DownloadModel -Restart
