@@ -44,6 +44,24 @@
     "windows-sm75.md",
     "INSTALL-WINDOWS-SM75.md"
   ],
+  "installer_copy_directories": [
+    "bin",
+    "scripts",
+    "config",
+    "docs",
+    "install",
+    "launchers"
+  ],
+  "installer_root_files": [
+    "README.md",
+    "LICENSE",
+    "BUILD-MANIFEST.json",
+    "BUILD-TOOLCHAIN.json",
+    "SBOM.cdx.json",
+    "SHA256SUMS.txt",
+    "README-FIRST.txt",
+    "START-HERE.bat"
+  ],
   "required_package_files": [
     "bin/ninfer.exe",
     "bin/ninfer-serve.exe",
