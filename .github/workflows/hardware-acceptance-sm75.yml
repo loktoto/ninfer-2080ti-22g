@@ -11,7 +11,7 @@ on:
       build_jobs:
         description: "Parallel compile jobs on the self-hosted machine"
         required: true
-        default: "4"
+        default: "2"
         type: string
 
 permissions:
@@ -45,7 +45,10 @@ jobs:
         shell: powershell
         run: |
           $jobs = [int]"${{ inputs.build_jobs }}"
-          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs
+          if ($jobs -lt 1 -or $jobs -gt 2) {
+            throw "Qualified SM75 builds are limited to 1-2 parallel compile jobs."
+          }
+          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs -RunW8Regression
 
       - name: Verify and package runtime
         shell: powershell
