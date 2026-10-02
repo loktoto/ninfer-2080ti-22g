@@ -344,6 +344,15 @@ if (-not $SkipModelDownload) {
 }
 
 $InstalledRoot = Copy-PackageAtomically $InstallDir
+
+# Re-verify the installed immutable package tree immediately after the atomic copy.
+# This catches copy-contract regressions before mutable user configuration is created.
+$InstalledPackageVerifier = Join-Path $InstalledRoot "install\verify-installation.ps1"
+if (-not (Test-Path $InstalledPackageVerifier -PathType Leaf)) {
+    throw "Installed package verifier is missing after atomic copy: $InstalledPackageVerifier"
+}
+& $InstalledPackageVerifier -PackageOnly
+
 [Environment]::SetEnvironmentVariable("NINFER_SM75_HOME",$InstalledRoot,"User")
 
 $Downloader = Join-Path $InstalledRoot "scripts\download-qwen38-windows-sm75.ps1"
