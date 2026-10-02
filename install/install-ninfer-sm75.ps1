@@ -121,14 +121,14 @@ function Get-VcRedistVersion {
         if (-not (Test-Path $RegistryPath)) { continue }
         $Runtime = Get-ItemProperty $RegistryPath -ErrorAction SilentlyContinue
         if (-not $Runtime -or [int]$Runtime.Installed -ne 1 -or [string]::IsNullOrWhiteSpace([string]$Runtime.Version)) { continue }
-        try { return [Version](([string]$Runtime.Version).TrimStart("v","V")) } catch {}
+        try { return [Version](([string]$Runtime.Version).TrimStart([char[]]"vV")) } catch {}
     }
     return $null
 }
 
 function Ensure-VcRuntime {
     try {
-        $RequiredVersion = [Version](([string]$BuildManifest.minimum_vc_redist_version).TrimStart("v","V"))
+        $RequiredVersion = [Version](([string]$BuildManifest.minimum_vc_redist_version).TrimStart([char[]]"vV"))
     } catch {
         throw "BUILD-MANIFEST.json is missing a valid minimum_vc_redist_version."
     }
