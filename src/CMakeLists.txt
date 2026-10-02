@@ -13,6 +13,15 @@ function(ninfer_cuda_archive target)
   target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
 endfunction()
 
+# The Windows SM75 production package is a runtime product, not a developer SDK.
+# Link the CUDA runtime statically so end users need only a compatible NVIDIA driver; the
+# full CUDA Toolkit remains a build-time dependency only.
+if(WIN32 AND NINFER_QWEN38_ONLY)
+  set(NINFER_CUDART_TARGET CUDA::cudart_static)
+else()
+  set(NINFER_CUDART_TARGET CUDA::cudart)
+endif()
+
 # Device/tensor/layout/graph primitives and the model-independent request runtime.
 add_library(ninfer_core STATIC
   core/arena.cu
@@ -32,7 +41,7 @@ add_library(ninfer_core STATIC
   runtime/engine/request_memory.cpp)
 ninfer_internal_includes(ninfer_core)
 ninfer_cuda_archive(ninfer_core)
-target_link_libraries(ninfer_core PUBLIC CUDA::cudart CUDA::nvtx3 Threads::Threads)
+target_link_libraries(ninfer_core PUBLIC ${NINFER_CUDART_TARGET} CUDA::nvtx3 Threads::Threads)
 
 # Generic .ninfer framing, binding, and direct final materialization.
 add_library(ninfer_artifact STATIC
@@ -283,6 +292,7 @@ add_library(ninfer_text STATIC
   text/unicode.cpp
   ${PROJECT_SOURCE_DIR}/third_party/utf8proc/utf8proc.c)
 ninfer_internal_includes(ninfer_text)
+target_compile_definitions(ninfer_text PRIVATE UTF8PROC_STATIC)
 
 add_library(ninfer_media_decode STATIC
   media/decode/decode.cpp)
@@ -295,6 +305,9 @@ if(NINFER_BUILD_MEDIA_ACQUIRE)
     product/media_acquire/acquire.cpp)
   ninfer_internal_includes(ninfer_media_acquire)
   target_link_libraries(ninfer_media_acquire PRIVATE PkgConfig::LIBCURL)
+  if(WIN32)
+    target_link_libraries(ninfer_media_acquire PRIVATE ws2_32)
+  endif()
 endif()
 
 if(NINFER_BUILD_PROMPT_INPUT)
@@ -322,7 +335,9 @@ target_include_directories(ninfer_engine PUBLIC ${PROJECT_SOURCE_DIR}/include)
 
 add_subdirectory(targets/qwen3_6)
 add_subdirectory(targets/qwen3_6_27b)
-add_subdirectory(targets/qwen3_6_35b_a3b)
+if(NOT NINFER_QWEN38_ONLY)
+  add_subdirectory(targets/qwen3_6_35b_a3b)
+endif()
 
 target_link_libraries(ninfer_engine
   PRIVATE
@@ -353,5 +368,5 @@ if(NINFER_BUILD_SERVE)
     ${PROJECT_SOURCE_DIR}/third_party/cpp-httplib)
   target_link_libraries(ninfer_serve
     PUBLIC ninfer_engine Threads::Threads
-    PRIVATE ninfer_media_acquire CUDA::cudart)
+    PRIVATE ninfer_media_acquire ${NINFER_CUDART_TARGET})
 endif()

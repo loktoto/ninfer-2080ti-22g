@@ -1,0 +1,119 @@
+name: RTX 2080 Ti SM75 hardware acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_path:
+        description: "Path to pinned qwen3_8_27b.ninfer on the self-hosted Windows runner"
+        required: true
+        default: "D:\\AI\\models\\qwen\\qwen3_8_27b.ninfer"
+        type: string
+      build_jobs:
+        description: "Parallel compile jobs on the self-hosted machine"
+        required: true
+        default: "2"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: [self-hosted, Windows, X64, sm75]
+    timeout-minutes: 720
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate distribution source contract
+        shell: powershell
+        run: .\scripts\validate-windows-sm75-distribution-contract.ps1
+
+      - name: Activate MSVC 2022
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Validate runner identity and pinned toolchain
+        shell: powershell
+        run: |
+          $gpu = & nvidia-smi --query-gpu=index,name,memory.total,compute_cap,driver_version --format=csv,noheader,nounits
+          if ($LASTEXITCODE -ne 0) { throw "nvidia-smi failed." }
+          Write-Host $gpu
+          if (($gpu -join "`n") -notmatch "2080\s*Ti") { throw "This workflow requires an RTX 2080 Ti runner." }
+          if (($gpu -join "`n") -notmatch ",\s*7\.5\s*,") { throw "This workflow requires compute capability 7.5." }
+          .\scripts\assert-windows-sm75-toolchain.ps1
+          Write-Host "Self-hosted GPU identity passed. The build script will initialize VS2022 and validate CUDA/CMake/Ninja."
+
+      - name: Clean production build
+        shell: powershell
+        run: |
+          $jobs = [int]"${{ inputs.build_jobs }}"
+          if ($jobs -lt 1 -or $jobs -gt 2) {
+            throw "Qualified SM75 builds are limited to 1-2 parallel compile jobs."
+          }
+          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs -RunW8Regression
+
+      - name: Verify and package runtime
+        shell: powershell
+        run: |
+          .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
+          .\scripts\package-windows-sm75.ps1
+          .\scripts\verify-package-windows-sm75.ps1
+
+      - name: Run physical GPU acceptance against extracted qualified ZIP
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $model = "${{ inputs.model_path }}"
+          $zip = Get-ChildItem .\dist -Filter "ninfer-windows-sm75-*.zip" -File |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $zip) { throw "Qualified ZIP was not produced." }
+
+          Remove-Item .\qualified-runtime -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force .\qualified-runtime | Out-Null
+          Expand-Archive -Path $zip.FullName -DestinationPath .\qualified-runtime -Force
+          $entries = @(Get-ChildItem .\qualified-runtime -Force)
+          if ($entries.Count -ne 1 -or -not $entries[0].PSIsContainer) {
+            throw "Qualified ZIP must contain exactly one top-level directory."
+          }
+          $repoRoot = (Resolve-Path ".").Path.TrimEnd("\")
+          $qualifiedRoot = [IO.Path]::GetFullPath($entries[0].FullName)
+          $prefix = $repoRoot + "\"
+          if (-not $qualifiedRoot.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) {
+            throw "Qualified runtime extracted outside repository workspace."
+          }
+          $installDir = $qualifiedRoot.Substring($prefix.Length)
+
+          .\scripts\acceptance-windows-sm75.ps1 `
+            -Model $model `
+            -PackagePath $zip.FullName `
+            -InstallDir $installDir
+
+      - name: Verify generated acceptance evidence
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zip = Get-ChildItem .\dist -Filter "ninfer-windows-sm75-*.zip" -File |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          $evidence = Get-ChildItem .\acceptance -Filter "windows-sm75-*.json" -File |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $zip -or -not $evidence) { throw "Qualified ZIP or acceptance JSON is missing." }
+          .\scripts\verify-acceptance-evidence.ps1 `
+            -EvidencePath $evidence.FullName `
+            -ExpectedGitSha $env:GITHUB_SHA `
+            -PackagePath $zip.FullName `
+            -LockPath .\config\windows-sm75-artifacts.json
+
+      - name: Upload qualified package and machine-verifiable evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ninfer-windows-sm75-qualified-${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+            dist/*.zip.sbom.cdx.json
+            acceptance/**
+            config/windows-sm75-artifacts.json
+          if-no-files-found: error
+          retention-days: 90
