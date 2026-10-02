@@ -152,6 +152,12 @@ try {
         }
     }
 
+    Write-Host "Running packaged end-user verifier in package-only mode..."
+    & (Join-Path $Stage.FullName "install\verify-installation.ps1") -PackageOnly
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged end-user verifier failed with exit code $LASTEXITCODE."
+    }
+
     Write-Host "Release package integrity verification passed."
     Write-Host "  ZIP:      $($Zip.Name)"
     Write-Host "  SHA-256:  $ActualOuter"
