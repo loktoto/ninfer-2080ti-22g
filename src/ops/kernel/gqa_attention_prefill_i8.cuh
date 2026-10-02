@@ -51,6 +51,8 @@ inline constexpr int kGqaPrefillI8SmemBytes = kGqaPrefillI8QBytes + kGqaPrefillI
 
 static_assert(kGqaPrefillI8Groups == 4);
 static_assert(kGqaPrefillI8DConsumers == 4);
+static_assert(kPagedKVPageSize % kGqaPrefillI8Bc == 0,
+              "prefill key tiles must not straddle paged-KV page boundaries");
 #if defined(NINFER_SM75)
 static_assert(kGqaPrefillI8SmemBytes == 44288);
 #else
@@ -407,13 +409,16 @@ __global__ __maxnreg__(120) void gqa_attention_prefill_i8_kernel(
 
     auto issue_kv_tile = [&](int tile_k0) {
         const int physical_page = block_table[tile_k0 >> kPagedKVPageShift];
+        // SM75 uses 32-key tiles inside 64-token KV pages. Preserve the absolute
+        // in-page offset so the second half of each page reads [32, 64), not [0, 32).
         for (int key_l = tid; key_l < Bc; key_l += kGqaPrefillI8Threads) {
-            const int key = tile_k0 + key_l;
-            __half* kd    = &k_scale_s[key_l * Groups];
-            __half* vd    = &v_scale_s[key_l * Groups];
+            const int key      = tile_k0 + key_l;
+            const int page_off = key & kPagedKVPageMask;
+            __half* kd         = &k_scale_s[key_l * Groups];
+            __half* vd         = &v_scale_s[key_l * Groups];
             if (key <= max_query_abs) {
                 const std::int64_t off =
-                    gqa_kv_quant_scale_index<Geometry>(physical_page, kv_head, 0, key_l);
+                    gqa_kv_quant_scale_index<Geometry>(physical_page, kv_head, 0, page_off);
                 ninfer::ops::cp_async<8>(kd, &cache_k_scale[off]);
                 ninfer::ops::cp_async<8>(vd, &cache_v_scale[off]);
             } else {
@@ -423,27 +428,28 @@ __global__ __maxnreg__(120) void gqa_attention_prefill_i8_kernel(
         }
 #pragma unroll 1
         for (int chunk = tid; chunk < Bc * (D / 16); chunk += kGqaPrefillI8Threads) {
-            const int key_l = chunk / (D / 16);
-            const int dc    = chunk - key_l * (D / 16);
-            const int d     = dc * 16;
-            const int key   = tile_k0 + key_l;
-            std::int8_t* kd = &k_i8[(key_l * DB16 + gqa_prefill_swz(key_l, dc * 8)) * 2];
-            std::int8_t* vd = &v_i8[key_l * D + d];
+            const int key_l    = chunk / (D / 16);
+            const int dc       = chunk - key_l * (D / 16);
+            const int d        = dc * 16;
+            const int key      = tile_k0 + key_l;
+            const int page_off = key & kPagedKVPageMask;
+            std::int8_t* kd    = &k_i8[(key_l * DB16 + gqa_prefill_swz(key_l, dc * 8)) * 2];
+            std::int8_t* vd    = &v_i8[key_l * D + d];
             if (key <= max_query_abs) {
                 if constexpr (PackedK) {
                     const std::int64_t koff =
-                        gqa_kv_i4_code_index<Geometry>(physical_page, kv_head, d / 2, key_l);
+                        gqa_kv_i4_code_index<Geometry>(physical_page, kv_head, d / 2, page_off);
                     gqa_kv_unpack_i4x16(&reinterpret_cast<const std::uint8_t*>(cache_k)[koff], kd);
                     const std::int64_t voff =
-                        gqa_kv_i4_code_index<Geometry>(physical_page, kv_head, d / 2, key_l);
+                        gqa_kv_i4_code_index<Geometry>(physical_page, kv_head, d / 2, page_off);
                     gqa_kv_unpack_i4x16(&cache_v[voff], vd);
                 } else {
                     const std::int64_t off =
-                        gqa_kv_quant_code_index<Geometry>(physical_page, kv_head, d, key_l);
+                        gqa_kv_quant_code_index<Geometry>(physical_page, kv_head, d, page_off);
                     cp_async<16, Cache::cg>(kd, &cache_k[off]);
                     if constexpr (PackedV) {
                         const std::int64_t voff = gqa_kv_i4_code_index<Geometry>(
-                            physical_page, kv_head, d / 2, key_l);
+                            physical_page, kv_head, d / 2, page_off);
                         gqa_kv_unpack_i4x16(&cache_v[voff], vd);
                     } else {
                         cp_async<16, Cache::cg>(vd,
