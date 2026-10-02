@@ -81,6 +81,13 @@ if (-not (Get-Command nvcc.exe -ErrorAction SilentlyContinue)) {
     }
 }
 Require-Command nvcc.exe | Out-Null
+
+$ToolchainAssert = Join-Path $PSScriptRoot "assert-windows-sm75-toolchain.ps1"
+if (-not (Test-Path $ToolchainAssert -PathType Leaf)) {
+    throw "Toolchain assertion script not found: $ToolchainAssert"
+}
+& $ToolchainAssert -VcpkgCommit $VcpkgCommit
+
 $NvccVersionText = (& nvcc.exe --version | Out-String)
 if ($LASTEXITCODE -ne 0 -or $NvccVersionText -notmatch "release\s+13\.1") {
     throw ("Windows SM75 production build requires CUDA Toolkit 13.1; nvcc reports:" + [Environment]::NewLine + $NvccVersionText)
@@ -146,6 +153,8 @@ Invoke-Checked { cmake.exe --build $BuildPath --parallel $BuildJobs } "CMake bui
 Write-Host "Installing staged runtime ..."
 New-Item -ItemType Directory -Force -Path $InstallPath | Out-Null
 Invoke-Checked { cmake.exe --install $BuildPath --prefix $InstallPath --config $Config } "CMake install"
+
+& $ToolchainAssert -VcpkgCommit $VcpkgCommit -OutputPath (Join-Path $InstallPath "BUILD-TOOLCHAIN.json")
 
 $BinDir = Join-Path $InstallPath "bin"
 $Expected = @("ninfer.exe","ninfer-serve.exe")

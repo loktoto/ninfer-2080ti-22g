@@ -30,7 +30,7 @@ jobs:
         with:
           arch: x64
 
-      - name: Validate runner identity
+      - name: Validate runner identity and pinned toolchain
         shell: powershell
         run: |
           $gpu = & nvidia-smi --query-gpu=index,name,memory.total,compute_cap,driver_version --format=csv,noheader,nounits
@@ -38,6 +38,7 @@ jobs:
           Write-Host $gpu
           if (($gpu -join "`n") -notmatch "2080\s*Ti") { throw "This workflow requires an RTX 2080 Ti runner." }
           if (($gpu -join "`n") -notmatch ",\s*7\.5\s*,") { throw "This workflow requires compute capability 7.5." }
+          .\scripts\assert-windows-sm75-toolchain.ps1
           Write-Host "Self-hosted GPU identity passed. The build script will initialize VS2022 and validate CUDA/CMake/Ninja."
 
       - name: Clean production build
