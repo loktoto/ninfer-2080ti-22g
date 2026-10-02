@@ -18,6 +18,15 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $PackageRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$DistributionContractPath = Join-Path $PackageRoot "config\windows-sm75-distribution-contract.json"
+if (-not (Test-Path $DistributionContractPath -PathType Leaf)) {
+    throw "Distribution contract is missing: $DistributionContractPath"
+}
+$DistributionContract = Get-Content $DistributionContractPath -Raw | ConvertFrom-Json
+if ($DistributionContract.schema_version -ne 1 -or $DistributionContract.profile -ne "qwen3.8-27b-sm75") {
+    throw "Unexpected Windows SM75 distribution contract."
+}
+
 
 function Get-DefaultInstallDir {
     if (Test-Path "D:\") { return "D:\AI\NInfer-SM75" }
@@ -206,16 +215,17 @@ function Copy-PackageAtomically([string]$Destination) {
     New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 
     try {
-        foreach ($Dir in @("bin","scripts","config","docs","install","launchers")) {
+        foreach ($Dir in @($DistributionContract.installer_copy_directories)) {
+            $Dir = [string]$Dir
             $Src = Join-Path $PackageRoot $Dir
             if (-not (Test-Path $Src -PathType Container)) { throw "Required package directory is missing: $Dir" }
             Copy-Item $Src (Join-Path $Stage $Dir) -Recurse -Force
         }
-        # Root files are already covered by Test-SourceChecksums. Copy the complete
-        # checksummed root set so new immutable provenance/metadata files cannot be
-        # silently omitted from the installed runtime.
-        Get-ChildItem $PackageRoot -File | ForEach-Object {
-            Copy-Item $_.FullName (Join-Path $Stage $_.Name) -Force
+        foreach ($File in @($DistributionContract.installer_root_files)) {
+            $File = [string]$File
+            $Src = Join-Path $PackageRoot $File
+            if (-not (Test-Path $Src -PathType Leaf)) { throw "Required package root file is missing: $File" }
+            Copy-Item $Src (Join-Path $Stage $File) -Force
         }
 
         if (Test-Path $DestFull -PathType Container) {
