@@ -30,6 +30,8 @@ endif()
 option(NINFER_BUILD_APPS "Build the NInfer CLI and server" ON)
 option(BUILD_TESTING "Build NInfer tests" OFF)
 option(NINFER_BUILD_BENCHMARKS "Build NInfer benchmarks" OFF)
+option(NINFER_BUILD_SM75_W8_REGRESSION
+  "Build the focused SM75 W8 LinearPair conformance executable" OFF)
 option(NINFER_QWEN38_ONLY
   "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
 
@@ -113,6 +115,25 @@ find_package(Threads REQUIRED)
 
 # --- Subdirectories ----------------------------------------------------------
 add_subdirectory(src)
+
+if(NINFER_BUILD_SM75_W8_REGRESSION)
+  if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+    message(FATAL_ERROR "NINFER_BUILD_SM75_W8_REGRESSION requires CMAKE_CUDA_ARCHITECTURES=75")
+  endif()
+  if(NOT BUILD_TESTING)
+    add_executable(ninfer_linear_pair_w8_a16_test
+      tests/ops/linear_pair/test_w8_a16.cpp
+      tests/ops/linear_pair/linear_pair_test_common.cpp)
+    target_include_directories(ninfer_linear_pair_w8_a16_test PRIVATE
+      ${PROJECT_SOURCE_DIR}/tests
+      ${PROJECT_SOURCE_DIR}/include
+      ${PROJECT_SOURCE_DIR}/src
+      ${PROJECT_SOURCE_DIR}/third_party
+      ${PROJECT_SOURCE_DIR}/third_party/utf8proc)
+    target_link_libraries(ninfer_linear_pair_w8_a16_test PRIVATE ninfer_ops)
+  endif()
+endif()
+
 if(NINFER_BUILD_APPS)
   add_subdirectory(apps)
 endif()

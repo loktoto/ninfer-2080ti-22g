@@ -232,6 +232,21 @@ uses `NINFER_API_KEY`, or pass `-ApiKey` explicitly.
   -Vision
 ```
 
+## SM75 W8 LinearPair regression gate
+
+Hosted Windows CI builds the focused `ninfer_linear_pair_w8_a16_test` target to catch source/link
+regressions without claiming numerical GPU validation. Physical RTX 2080 Ti qualification runs the
+same executable on SM75 before packaging:
+
+```powershell
+.\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2 -RunW8Regression
+```
+
+The conformance cases cover the corrected T=161..192 route boundary (160/161/162/176/192/193/194),
+poison/non-finite output detection, guard regions, input preservation and a numerical oracle.
+Exit code 77 ("no usable CUDA device") fails physical qualification. The hardware workflow restricts
+qualified compilation to at most two jobs.
+
 ## Hardware acceptance sequence
 
 Production acceptance is bound to a concrete release ZIP. Package first, then run:

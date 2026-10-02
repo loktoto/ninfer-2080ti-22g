@@ -8,6 +8,8 @@ param(
     [string]$VcpkgCommit = "b3ae22aef2b857af6e80d756c13f15db12be4e8a",
     [ValidateRange(1,16)]
     [int]$BuildJobs = 2,
+    [switch]$BuildW8Regression,
+    [switch]$RunW8Regression,
     [switch]$SkipDependencies,
     [switch]$Clean
 )
@@ -130,6 +132,8 @@ if ($Clean) {
 }
 
 $Toolchain = Join-Path $VcpkgRoot "scripts\buildsystems\vcpkg.cmake"
+if ($RunW8Regression) { $BuildW8Regression = $true }
+
 $CmakeArgs = @(
     "-S", $RepoRoot,
     "-B", $BuildPath,
@@ -140,6 +144,7 @@ $CmakeArgs = @(
     "-DVCPKG_TARGET_TRIPLET=x64-windows",
     "-DNINFER_BUILD_APPS=ON",
     "-DNINFER_QWEN38_ONLY=ON",
+    "-DNINFER_BUILD_SM75_W8_REGRESSION=$($BuildW8Regression.IsPresent.ToString().ToUpperInvariant())",
     "-DBUILD_TESTING=OFF",
     "-DNINFER_BUILD_BENCHMARKS=OFF"
 )
@@ -147,8 +152,24 @@ $CmakeArgs = @(
 Write-Host "Configuring native SM75 build ..."
 Invoke-Checked { cmake.exe @CmakeArgs } "CMake configure"
 
-Write-Host "Compiling Qwen3.8-only SM75 profile with $BuildJobs parallel job(s) ..."
-Invoke-Checked { cmake.exe --build $BuildPath --parallel $BuildJobs } "CMake build"
+$BuildTargets = @("ninfer","ninfer-serve")
+if ($BuildW8Regression) { $BuildTargets += "ninfer_linear_pair_w8_a16_test" }
+$BuildArgs = @("--build",$BuildPath,"--target") + $BuildTargets + @("--parallel",$BuildJobs.ToString())
+Write-Host "Compiling Qwen3.8-only SM75 targets [$($BuildTargets -join ', ')] with $BuildJobs parallel job(s) ..."
+Invoke-Checked { cmake.exe @BuildArgs } "CMake build"
+
+if ($RunW8Regression) {
+    $W8Exe = Get-ChildItem $BuildPath -Recurse -Filter "ninfer_linear_pair_w8_a16_test.exe" -File |
+        Select-Object -First 1
+    if (-not $W8Exe) { throw "W8 regression executable was not produced." }
+    Write-Host "Running physical SM75 W8 LinearPair conformance regression..."
+    & $W8Exe.FullName
+    $W8Exit = $LASTEXITCODE
+    if ($W8Exit -eq 77) {
+        throw "W8 regression skipped because no usable CUDA device was available; physical acceptance must fail closed."
+    }
+    if ($W8Exit -ne 0) { throw "W8 LinearPair regression failed with exit code $W8Exit." }
+}
 
 Write-Host "Installing staged runtime ..."
 New-Item -ItemType Directory -Force -Path $InstallPath | Out-Null
