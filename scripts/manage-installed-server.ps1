@@ -101,8 +101,16 @@ function Start-Tracked([string]$RequestedMode) {
     if (-not (Test-Path $Exe -PathType Leaf)) { throw "ninfer-serve.exe is missing: $Exe" }
     $ExistingProcess = Get-TrackedProcess
     if ($ExistingProcess) {
-        Write-Host "NInfer is already running as PID $($ExistingProcess.Id)."
-        return
+        $ExistingMode = $null
+        try { $ExistingMode = [string](Get-Content $StatePath -Raw | ConvertFrom-Json).mode } catch {}
+        if ($ExistingMode -eq $RequestedMode) {
+            Write-Host "NInfer is already running in $RequestedMode mode as PID $($ExistingProcess.Id)."
+            return
+        }
+        $ModeLabel = if ([string]::IsNullOrWhiteSpace($ExistingMode)) { "unknown" } else { $ExistingMode }
+        Write-Host "NInfer is running in $ModeLabel mode; switching to $RequestedMode..."
+        Stop-Tracked
+        Start-Sleep -Milliseconds 500
     }
 
     $Settings = Get-Settings
