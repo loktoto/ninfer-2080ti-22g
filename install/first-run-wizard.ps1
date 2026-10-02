@@ -94,17 +94,25 @@ if ([string]::IsNullOrWhiteSpace($ApiKey)) {
 if ([string]::IsNullOrWhiteSpace($ApiKey)) { throw "API key generation failed." }
 Set-Content -Path $KeyPath -Value $ApiKey -Encoding ASCII -NoNewline
 try {
-    $Identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $CurrentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    if (-not $CurrentSid) { throw "Current Windows user SID could not be resolved." }
+    $SystemSid = New-Object System.Security.Principal.SecurityIdentifier("S-1-5-18")
     $Acl = Get-Acl $KeyPath
     $Acl.SetAccessRuleProtection($true,$false)
     foreach ($Rule in @($Acl.Access)) { [void]$Acl.RemoveAccessRuleSpecific($Rule) }
-    $UserRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $Identity,"FullControl","Allow"
-    $SystemRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList "NT AUTHORITY\SYSTEM","FullControl","Allow"
+    $UserRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $CurrentSid,"FullControl","Allow"
+    $SystemRule = New-Object -TypeName System.Security.AccessControl.FileSystemAccessRule -ArgumentList $SystemSid,"FullControl","Allow"
     $Acl.AddAccessRule($UserRule)
     $Acl.AddAccessRule($SystemRule)
     Set-Acl -Path $KeyPath -AclObject $Acl
+
+    $VerifiedAcl = Get-Acl $KeyPath
+    if (-not $VerifiedAcl.AreAccessRulesProtected) {
+        throw "API-key ACL inheritance is still enabled after hardening."
+    }
 } catch {
-    Write-Warning "Could not tighten API-key ACL automatically: $($_.Exception.Message)"
+    Remove-Item $KeyPath -Force -ErrorAction SilentlyContinue
+    throw "Could not secure the local API-key file ACL. The key was removed. $($_.Exception.Message)"
 }
 
 $Settings = [ordered]@{
