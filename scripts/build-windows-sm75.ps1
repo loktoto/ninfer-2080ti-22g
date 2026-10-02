@@ -81,6 +81,10 @@ if (-not (Get-Command nvcc.exe -ErrorAction SilentlyContinue)) {
     }
 }
 Require-Command nvcc.exe | Out-Null
+$NvccVersionText = (& nvcc.exe --version | Out-String)
+if ($LASTEXITCODE -ne 0 -or $NvccVersionText -notmatch "release\s+13\.1") {
+    throw ("Windows SM75 production build requires CUDA Toolkit 13.1; nvcc reports:" + [Environment]::NewLine + $NvccVersionText)
+}
 
 if (-not $VcpkgRoot) {
     $VcpkgRoot = Join-Path $RepoRoot ".deps\vcpkg"
