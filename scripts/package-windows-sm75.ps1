@@ -48,6 +48,7 @@ $ConfigDir = Join-Path $StagePath "config"
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 Copy-Item (Join-Path $RepoRoot "config\windows-sm75-artifacts.json") (Join-Path $ConfigDir "windows-sm75-artifacts.json") -Force
 Copy-Item (Join-Path $RepoRoot "config\production-defaults.json") (Join-Path $ConfigDir "production-defaults.json") -Force
+Copy-Item (Join-Path $RepoRoot "config\windows-sm75-toolchain.json") (Join-Path $ConfigDir "windows-sm75-toolchain.json") -Force
 
 $RuntimeScriptsDir = Join-Path $StagePath "scripts"
 New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
@@ -88,20 +89,39 @@ Get-ChildItem (Join-Path $RepoRoot "launchers") -Filter *.bat -File | ForEach-Ob
 Copy-Item (Join-Path $RepoRoot "install\START-HERE.bat") (Join-Path $StagePath "START-HERE.bat") -Force
 Copy-Item (Join-Path $RepoRoot "install\README-FIRST.txt") (Join-Path $StagePath "README-FIRST.txt") -Force
 
-$cudaVersion = $null
-$nvcc = Get-Command nvcc.exe -ErrorAction SilentlyContinue
-if ($nvcc) {
-    $versionOutput = (& $nvcc.Source --version | Out-String)
-    if ($LASTEXITCODE -eq 0 -and $versionOutput -match "release\s+([0-9]+\.[0-9]+)") {
-        $cudaVersion = $Matches[1]
-    }
+$ToolchainRecordPath = Join-Path $StagePath "BUILD-TOOLCHAIN.json"
+if (-not (Test-Path $ToolchainRecordPath -PathType Leaf)) {
+    throw "BUILD-TOOLCHAIN.json is missing from the staged runtime. Rebuild with build-windows-sm75.ps1."
 }
+$ToolchainRecord = Get-Content $ToolchainRecordPath -Raw | ConvertFrom-Json
+if ($ToolchainRecord.schema_version -ne 1 -or
+    $ToolchainRecord.artifact_type -ne "ninfer_windows_sm75_toolchain" -or
+    $ToolchainRecord.profile -ne "qwen3.8-27b-sm75") {
+    throw "Unexpected BUILD-TOOLCHAIN.json contract."
+}
+
+$ToolchainLockPath = Join-Path $ConfigDir "windows-sm75-toolchain.json"
+$ToolchainLock = Get-Content $ToolchainLockPath -Raw | ConvertFrom-Json
+$ToolchainLockHash = (Get-FileHash $ToolchainLockPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($ToolchainLock.schema_version -ne 1 -or $ToolchainLock.profile -ne "qwen3.8-27b-sm75") {
+    throw "Unexpected Windows SM75 toolchain lock contract."
+}
+if ([string]$ToolchainRecord.toolchain_lock_sha256 -ne $ToolchainLockHash) {
+    throw "BUILD-TOOLCHAIN.json does not match the embedded production toolchain lock."
+}
+$cudaVersion = ([string]$ToolchainRecord.cuda_compiler -replace "\.[0-9]+$","")
 
 $vcpkgCommit = $null
 $vcpkgRoot = Join-Path $RepoRoot ".deps\vcpkg"
 if (Test-Path (Join-Path $vcpkgRoot ".git")) {
     $candidate = (& git.exe -C $vcpkgRoot rev-parse HEAD).Trim()
     if ($LASTEXITCODE -eq 0 -and $candidate) { $vcpkgCommit = $candidate }
+}
+
+if ([string]::IsNullOrWhiteSpace($vcpkgCommit) -or
+    $vcpkgCommit -ne [string]$ToolchainRecord.vcpkg_commit -or
+    $vcpkgCommit -ne [string]$ToolchainLock.vcpkg_commit) {
+    throw "vcpkg checkout does not match the recorded production toolchain."
 }
 
 $cmakeVersion = ((& cmake.exe --version | Select-Object -First 1) -replace "^cmake version\s+","").Trim()
@@ -154,10 +174,15 @@ $manifest = [ordered]@{
     installer_schema = 1
     artifact_channel = $ArtifactChannel
     artifact_lock_sha256 = $ArtifactLockHash
+    toolchain_lock_sha256 = $ToolchainLockHash
     cuda_toolkit = $cudaVersion
-    vcpkg_commit = $vcpkgCommit
-    msvc_toolset = $env:VCToolsVersion
-    cmake = $cmakeVersion
+    cuda_compiler = [string]$ToolchainRecord.cuda_compiler
+    vcpkg_commit = [string]$ToolchainRecord.vcpkg_commit
+    msvc_toolset = [string]$ToolchainRecord.msvc_toolset
+    msvc_compiler = [string]$ToolchainRecord.msvc_compiler
+    windows_sdk = [string]$ToolchainRecord.windows_sdk
+    cmake = [string]$ToolchainRecord.cmake
+    ninja = [string]$ToolchainRecord.ninja
     powershell = $PSVersionTable.PSVersion.ToString()
     windows = [Environment]::OSVersion.VersionString
     created_utc = [DateTime]::UtcNow.ToString("o")
@@ -167,7 +192,7 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $StagePath "BUILD-M
 $SbomScript = Join-Path $RepoRoot "scripts\generate-windows-sm75-sbom.ps1"
 if (-not (Test-Path $SbomScript -PathType Leaf)) { throw "SBOM generator not found: $SbomScript" }
 $SbomPath = Join-Path $StagePath "SBOM.cdx.json"
-& $SbomScript -OutputPath $SbomPath -VcpkgRoot $vcpkgRoot -GitSha $gitSha -CudaVersion $cudaVersion
+& $SbomScript -OutputPath $SbomPath -VcpkgRoot $vcpkgRoot -GitSha $gitSha -CudaVersion ([string]$ToolchainRecord.cuda_compiler)
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $SbomPath -PathType Leaf)) {
     throw "CycloneDX SBOM generation failed."
 }

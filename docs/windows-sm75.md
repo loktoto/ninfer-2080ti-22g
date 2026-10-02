@@ -17,9 +17,26 @@ The Qwen3.8-only Windows product links `CUDA::cudart_static`, so a normal user d
 
 ## Supported build toolchain
 
-Building from source requires Visual Studio 2022 Build Tools (v143) with Desktop development with C++ and Windows SDK, CUDA Toolkit 13.1, CMake 3.28+, Ninja, Git, and Windows PowerShell 5.1+ or PowerShell 7.
+Production builds are fail-closed against `config/windows-sm75-toolchain.json`. The qualified
+package uses one explicit toolchain:
 
-The build script intentionally selects Visual Studio 2022. The production path does not use `-allow-unsupported-compiler`.
+| Component | Version |
+|---|---|
+| MSVC v143 toolset | 14.44.35207 |
+| cl.exe | 19.44.35229 |
+| Windows SDK | 10.0.26100.0 |
+| CUDA compiler | 13.1.80 |
+| CMake | 3.31.6 |
+| Ninja | 1.13.2 |
+| vcpkg commit | b3ae22aef2b857af6e80d756c13f15db12be4e8a |
+| CUDA architecture | sm_75 |
+
+`scripts/assert-windows-sm75-toolchain.ps1` fails closed on compiler/SDK/CUDA/CMake/Ninja/vcpkg
+drift and writes `BUILD-TOOLCHAIN.json`. Package verification cross-checks checked-out lock,
+packaged lock, BUILD-TOOLCHAIN and BUILD-MANIFEST. A toolchain upgrade therefore requires an
+explicit source change followed by hosted CI and physical RTX 2080 Ti re-qualification.
+
+The production path does not use `-allow-unsupported-compiler`.
 
 ## One-click packaged installation
 
@@ -146,8 +163,10 @@ dist/
    │  └─ Configure-NInfer.bat
    ├─ config/
    │  ├─ windows-sm75-artifacts.json
+   │  ├─ windows-sm75-toolchain.json
    │  └─ production-defaults.json
    ├─ BUILD-MANIFEST.json
+   ├─ BUILD-TOOLCHAIN.json
    ├─ SBOM.cdx.json
    ├─ SHA256SUMS.txt
    ├─ README.md

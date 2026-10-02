@@ -63,6 +63,60 @@ try {
         throw "Build manifest is missing artifact_lock_sha256."
     }
 
+    if ([string]::IsNullOrWhiteSpace([string]$Manifest.toolchain_lock_sha256)) {
+        throw "Build manifest is missing toolchain_lock_sha256."
+    }
+
+    $EmbeddedToolchainLockPath = Join-Path $Stage.FullName "config\windows-sm75-toolchain.json"
+    if (-not (Test-Path $EmbeddedToolchainLockPath -PathType Leaf)) {
+        throw "Embedded production toolchain lock is missing."
+    }
+    $ToolchainLock = Get-Content $EmbeddedToolchainLockPath -Raw | ConvertFrom-Json
+    if ($ToolchainLock.schema_version -ne 1 -or $ToolchainLock.profile -ne "qwen3.8-27b-sm75") {
+        throw "Embedded production toolchain lock contract is invalid."
+    }
+    $EmbeddedToolchainLockHash = (Get-FileHash $EmbeddedToolchainLockPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($EmbeddedToolchainLockHash -ne ([string]$Manifest.toolchain_lock_sha256).ToLowerInvariant()) {
+        throw "Embedded toolchain lock hash does not match BUILD-MANIFEST.json."
+    }
+
+    $SourceToolchainLockPath = Join-Path $RepoRoot "config\windows-sm75-toolchain.json"
+    if (-not (Test-Path $SourceToolchainLockPath -PathType Leaf)) {
+        throw "Source production toolchain lock is missing."
+    }
+    $SourceToolchainLockHash = (Get-FileHash $SourceToolchainLockPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($SourceToolchainLockHash -ne $EmbeddedToolchainLockHash) {
+        throw "Packaged toolchain lock does not match the checked-out release source."
+    }
+
+    $ToolchainRecordPath = Join-Path $Stage.FullName "BUILD-TOOLCHAIN.json"
+    if (-not (Test-Path $ToolchainRecordPath -PathType Leaf)) {
+        throw "BUILD-TOOLCHAIN.json missing from package."
+    }
+    $ToolchainRecord = Get-Content $ToolchainRecordPath -Raw | ConvertFrom-Json
+    if ($ToolchainRecord.schema_version -ne 1 -or
+        $ToolchainRecord.artifact_type -ne "ninfer_windows_sm75_toolchain" -or
+        $ToolchainRecord.profile -ne "qwen3.8-27b-sm75") {
+        throw "Unexpected BUILD-TOOLCHAIN.json contract."
+    }
+    if ([string]$ToolchainRecord.toolchain_lock_sha256 -ne $EmbeddedToolchainLockHash) {
+        throw "BUILD-TOOLCHAIN.json does not match the production toolchain lock."
+    }
+
+    foreach ($Name in @("msvc_toolset","msvc_compiler","windows_sdk","cuda_compiler","cmake","ninja","vcpkg_commit")) {
+        $ExpectedValue = [string]$ToolchainLock.$Name
+        if ([string]$ToolchainRecord.$Name -ne $ExpectedValue) {
+            throw "BUILD-TOOLCHAIN.json drift for $Name."
+        }
+        if ([string]$Manifest.$Name -ne $ExpectedValue) {
+            throw "BUILD-MANIFEST.json drift for $Name."
+        }
+    }
+    $ExpectedCudaToolkit = ([string]$ToolchainLock.cuda_compiler -replace "\.[0-9]+$","")
+    if ([string]$Manifest.cuda_toolkit -ne $ExpectedCudaToolkit) {
+        throw "BUILD-MANIFEST.json CUDA toolkit version does not match the production toolchain lock."
+    }
+
     $SbomPath = Join-Path $Stage.FullName "SBOM.cdx.json"
     if (-not (Test-Path $SbomPath -PathType Leaf)) { throw "SBOM.cdx.json missing from package." }
     $Sbom = Get-Content $SbomPath -Raw | ConvertFrom-Json
@@ -159,6 +213,8 @@ try {
         "scripts\verify-windows-sm75.ps1",
         "config\windows-sm75-artifacts.json",
         "config\production-defaults.json",
+        "config\windows-sm75-toolchain.json",
+        "BUILD-TOOLCHAIN.json",
         "SBOM.cdx.json",
         "docs\INSTALL-WINDOWS-SM75.md",
         "install\install-ninfer-sm75.ps1",
