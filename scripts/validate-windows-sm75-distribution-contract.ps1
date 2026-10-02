@@ -33,7 +33,7 @@ function Assert-UniqueList($Values,[string]$Label) {
     }
 }
 
-foreach ($Field in @("config_files","runtime_scripts","installer_files","launcher_files","docs_files","required_package_files")) {
+foreach ($Field in @("config_files","runtime_scripts","installer_files","launcher_files","docs_files","installer_copy_directories","installer_root_files","required_package_files")) {
     Assert-UniqueList $Contract.$Field $Field
 }
 
