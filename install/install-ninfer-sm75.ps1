@@ -113,19 +113,43 @@ function Test-SourceChecksums {
     Write-Host "Extracted package integrity passed."
 }
 
+function Get-VcRedistVersion {
+    foreach ($RegistryPath in @(
+        "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+        "HKLM:\SOFTWARE\Wow6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+    )) {
+        if (-not (Test-Path $RegistryPath)) { continue }
+        $Runtime = Get-ItemProperty $RegistryPath -ErrorAction SilentlyContinue
+        if (-not $Runtime -or [int]$Runtime.Installed -ne 1 -or [string]::IsNullOrWhiteSpace([string]$Runtime.Version)) { continue }
+        try { return [Version](([string]$Runtime.Version).TrimStart("v","V")) } catch {}
+    }
+    return $null
+}
+
 function Ensure-VcRuntime {
-    $RuntimeDll = Join-Path $env:WINDIR "System32\vcruntime140.dll"
-    if (Test-Path $RuntimeDll -PathType Leaf) { return }
+    try {
+        $RequiredVersion = [Version](([string]$BuildManifest.minimum_vc_redist_version).TrimStart("v","V"))
+    } catch {
+        throw "BUILD-MANIFEST.json is missing a valid minimum_vc_redist_version."
+    }
+
+    $InstalledVersion = Get-VcRedistVersion
+    if ($InstalledVersion -and $InstalledVersion -ge $RequiredVersion) {
+        Write-Host "Microsoft Visual C++ x64 runtime $InstalledVersion satisfies required $RequiredVersion."
+        return
+    }
     if ($SkipPrerequisites) {
-        throw "Microsoft Visual C++ v14 x64 runtime is missing and -SkipPrerequisites was requested."
+        $Detected = if ($InstalledVersion) { $InstalledVersion.ToString() } else { "not installed" }
+        throw "Microsoft Visual C++ x64 runtime is too old or missing (detected $Detected, required >= $RequiredVersion) and -SkipPrerequisites was requested."
     }
 
     $Winget = Get-Command winget.exe -ErrorAction SilentlyContinue
     if ($Winget) {
-        Write-Host "Installing Microsoft Visual C++ v14 Redistributable (x64) with winget..."
+        Write-Host "Installing/updating Microsoft Visual C++ v14 Redistributable (x64) with winget..."
         & $Winget.Source install --id Microsoft.VCRedist.2015+.x64 --exact --silent --accept-package-agreements --accept-source-agreements
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $RuntimeDll -PathType Leaf)) { return }
-        Write-Warning "winget VC++ bootstrap did not complete successfully; falling back to Microsoft's signed installer."
+        $InstalledVersion = Get-VcRedistVersion
+        if ($InstalledVersion -and $InstalledVersion -ge $RequiredVersion) { return }
+        Write-Warning "winget VC++ bootstrap did not reach the required version; falling back to Microsoft's signed installer."
     }
 
     $TempInstaller = Join-Path ([IO.Path]::GetTempPath()) ("vc_redist.x64." + [guid]::NewGuid().ToString("N") + ".exe")
@@ -151,8 +175,10 @@ function Ensure-VcRuntime {
         if ($Install.ExitCode -notin @(0,1638,3010)) {
             throw "Microsoft VC++ Redistributable installer failed with exit code $($Install.ExitCode)."
         }
-        if (-not (Test-Path $RuntimeDll -PathType Leaf)) {
-            throw "VC++ runtime installation completed but vcruntime140.dll is unavailable. Reboot Windows and run START-HERE.bat again."
+
+        $InstalledVersion = Get-VcRedistVersion
+        if (-not $InstalledVersion -or $InstalledVersion -lt $RequiredVersion) {
+            throw "VC++ runtime installation finished but required version >= $RequiredVersion is not registered. Reboot Windows and run START-HERE.bat again."
         }
         if ($Install.ExitCode -eq 3010) {
             Write-Warning "VC++ runtime requested a reboot. NInfer may work immediately, but rebooting before heavy use is recommended."
@@ -161,7 +187,6 @@ function Ensure-VcRuntime {
         Remove-Item $TempInstaller -Force -ErrorAction SilentlyContinue
     }
 }
-
 function Copy-PackageAtomically([string]$Destination) {
     $SourceFull = [IO.Path]::GetFullPath($PackageRoot).TrimEnd('\')
     $DestFull = [IO.Path]::GetFullPath($Destination).TrimEnd('\')
