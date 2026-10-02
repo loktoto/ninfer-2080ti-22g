@@ -152,6 +152,12 @@ try {
         }
     }
 
+    $RuntimeVerifier = Join-Path $Stage.FullName "scripts\verify-windows-sm75.ps1"
+    & $RuntimeVerifier -RequireDependencyAudit
+    if ($LASTEXITCODE -ne 0) {
+        throw "Extracted runtime dependency/startup verification failed with exit code $LASTEXITCODE."
+    }
+
     Write-Host "Release package integrity verification passed."
     Write-Host "  ZIP:      $($Zip.Name)"
     Write-Host "  SHA-256:  $ActualOuter"

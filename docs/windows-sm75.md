@@ -91,11 +91,13 @@ To verify an existing file without downloading:
 
 ## Model-free binary verification
 
-This check does not need a GPU or model artifact. It proves the packaged executables can load their
-Windows DLL dependencies and reach their CLI parser:
+This check does not need a GPU or model artifact. It audits every packaged PE dependency, rejects
+a dynamic CUDA runtime import, requires non-system DLLs to be present beside the executables, then
+launches both programs with PATH reduced to the package bin directory plus Windows system paths.
+CI and release validation require `dumpbin.exe` so the dependency audit cannot silently skip:
 
 ```powershell
-.\scripts\verify-windows-sm75.ps1
+.\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
 ```
 
 ## Release package
