@@ -44,6 +44,12 @@ try {
     if ($Manifest.build_profile -ne "qwen3.8-27b-sm75") { throw "Unexpected build profile: $($Manifest.build_profile)" }
     if ($Manifest.cuda_runtime_linkage -ne "static") { throw "Windows production package must use static CUDA runtime linkage." }
     if ([int]$Manifest.minimum_nvidia_driver_branch -lt 580) { throw "Manifest NVIDIA driver floor is below R580." }
+    try {
+        $RequiredVc = [Version](([string]$Manifest.minimum_vc_redist_version).TrimStart("v","V"))
+    } catch {
+        throw "Manifest minimum_vc_redist_version is missing or invalid."
+    }
+    if ($RequiredVc.Major -lt 14) { throw "Manifest VC++ runtime floor is invalid: $RequiredVc" }
     if ($Manifest.installer_schema -ne 1) { throw "Unexpected installer schema: $($Manifest.installer_schema)" }
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.artifact_channel)) {
         throw "Build manifest is missing artifact_channel."
