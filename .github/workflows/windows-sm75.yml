@@ -2,8 +2,9 @@ name: Windows SM75 production build
 
 on:
   push:
-    branches: [windows-native-sm75]
+    branches: [master]
   pull_request:
+    branches: [master]
   workflow_dispatch:
 
 permissions:
