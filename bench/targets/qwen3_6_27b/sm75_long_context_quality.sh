@@ -250,18 +250,20 @@ with open(summary_path, "a", encoding="utf-8") as summary:
         if target <= 0:
             raise RuntimeError(f"OUTPUT_RESERVE leaves no prompt budget at context {context}")
         calibration_needle = f"SM75CAL{context}X"
-        repetitions, _ = calibrate(target, calibration_needle)
+        calibrated_repetitions, _ = calibrate(target, calibration_needle)
         for depth in depths:
             depth_pct = int(round(depth * 100))
             needle = f"SM75K{context}D{depth_pct}Z9Q7"
-            prompt = make_prompt(repetitions, depth, needle)
+            # Needle placement can change tokenization by a token or two. Trim this
+            # case independently so an early/deep boundary adjustment cannot silently
+            # shorten every later depth in the same context.
+            case_repetitions = calibrated_repetitions
+            prompt = make_prompt(case_repetitions, depth, needle)
             observed = count_tokens(prompt)
             if observed > target:
-                # A boundary merge around the moved needle can shift tokenization by a token or two.
-                # Trim filler until this exact depth is safely below the generation ceiling.
-                while observed > target and repetitions > 0:
-                    repetitions -= 1
-                    prompt = make_prompt(repetitions, depth, needle)
+                while observed > target and case_repetitions > 0:
+                    case_repetitions -= 1
+                    prompt = make_prompt(case_repetitions, depth, needle)
                     observed = count_tokens(prompt)
             body = {
                 "model": model_id,
