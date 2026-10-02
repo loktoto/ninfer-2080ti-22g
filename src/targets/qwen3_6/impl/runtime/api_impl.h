@@ -213,7 +213,12 @@ SpeculativeStats Program<Variant>::speculative_stats_lane(std::uint32_t lane) co
 
 template <>
 MemorySummary Program<Variant>::memory_summary() const noexcept {
-    return impl_->memory_summary();
+    MemorySummary summary = impl_->memory_summary();
+    if (impl_->decoder != nullptr && impl_->decoder->text_kv.layers() != 0 &&
+        impl_->decoder->text_kv.batch_layer_view(0).e8_lattice) {
+        summary.kv_cache = KvCacheStorage::RK4V4E8;
+    }
+    return summary;
 }
 
 template <>
