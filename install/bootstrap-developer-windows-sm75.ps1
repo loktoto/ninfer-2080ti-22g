@@ -30,6 +30,11 @@ function Refresh-ProcessEnvironment {
         if (-not $Value) { $Value = [Environment]::GetEnvironmentVariable($Name,"User") }
         if ($Value) { [Environment]::SetEnvironmentVariable($Name,$Value,"Process") }
     }
+    if ($env:CUDA_PATH_V13_1) {
+        $env:CUDA_PATH = $env:CUDA_PATH_V13_1
+        $CudaBin = Join-Path $env:CUDA_PATH_V13_1 "bin"
+        $env:Path = "$CudaBin;$env:Path"
+    }
 }
 
 $Common = @("--exact","--accept-package-agreements","--accept-source-agreements")
