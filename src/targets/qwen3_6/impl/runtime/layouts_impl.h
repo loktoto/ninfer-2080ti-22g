@@ -117,6 +117,11 @@ PersistentLayout persistent_layout(const SequencePlanImpl& plan) {
                      .attention_head_dim        = TextConfig::head_dim,
                      .kv_dtype                  = plan.kv_dtype,
                      .kv_quant_group            = plan.kv_quant_group,
+                     .kv_packed_v               = plan.kv_packed_v,
+                     .kv_rotate_k               = plan.kv_rotate_k,
+                     .kv_rotate_v               = plan.kv_rotate_v,
+                     .kv_packed_k               = plan.kv_packed_k,
+                     .kv_e8_lattice             = plan.kv_e8_lattice,
                      .enable_mtp                = plan.features.mtp(),
                      .kv_table_rows             = static_cast<std::int32_t>(plan.max_concurrency),
                      .text_physical_page_groups = physical_pages,
@@ -503,7 +508,6 @@ WorkspacePlan build_workspace_plan(const SequencePlanImpl& plan) {
                 }
                 return finish(layout);
             };
-
             out.dflash_context = dflash_context_capacity(chunk, false);
             for (std::int32_t batch = 1; batch <= static_cast<std::int32_t>(plan.max_concurrency);
                  ++batch) {
@@ -633,6 +637,11 @@ std::unique_ptr<SequencePlanImpl> build_sequence_candidate(const SequencePlannin
     impl->device              = inputs.device;
     impl->kv_dtype            = inputs.kv_dtype;
     impl->kv_quant_group      = inputs.kv_quant_group;
+    impl->kv_packed_v         = inputs.kv_packed_v;
+    impl->kv_rotate_k         = inputs.kv_rotate_k;
+    impl->kv_rotate_v         = inputs.kv_rotate_v;
+    impl->kv_packed_k         = inputs.kv_packed_k;
+    impl->kv_e8_lattice       = inputs.kv_e8_lattice;
     impl->persistent          = persistent_layout(*impl);
     impl->workspace           = build_workspace_plan(*impl);
     if (impl->features.vision) {
@@ -642,9 +651,6 @@ std::unique_ptr<SequencePlanImpl> build_sequence_candidate(const SequencePlannin
             schedule::VisionContext::output_transient_bytes(merged);
     }
     if (impl->use_cuda_graph) {
-        // Definitions remain per execution profile, but only one executable is instantiated for
-        // each reachable node-topology class. These bounds cover the largest profile installed in
-        // each class and the driver/module state materialized while qualifying all definitions.
         if (impl->speculative_backend == SpeculativeBackend::None) {
 #if defined(NINFER_SM75)
             impl->graph_allowance_bytes = checked_mul(64ULL * kMiB, impl->max_concurrency,
@@ -707,6 +713,7 @@ make_sequence_planner_impl(DeviceContext& device, const EngineOptions& options,
                            WeightsProfile weights_profile) {
     validate_target_options(device, options);
 
+    const bool rk4v4_e8 = options.kv_cache == KvCacheStorage::RK4V4E8;
     SequencePlanningInputs inputs{
         .weights_profile     = weights_profile,
         .capacity            = options.max_context,
@@ -716,6 +723,11 @@ make_sequence_planner_impl(DeviceContext& device, const EngineOptions& options,
         .speculative_backend = options.speculative.backend,
         .kv_dtype       = options.kv_cache == KvCacheStorage::BFloat16 ? DType::BF16 : DType::I8,
         .kv_quant_group = options.kv_cache == KvCacheStorage::BFloat16 ? 0 : qwen3_6::kKvQuantGroup,
+        .kv_packed_v    = rk4v4_e8,
+        .kv_rotate_k    = rk4v4_e8,
+        .kv_rotate_v    = rk4v4_e8,
+        .kv_packed_k    = rk4v4_e8,
+        .kv_e8_lattice  = rk4v4_e8,
         .proposal_head  = options.speculative.proposal_head,
         .features       = qwen3_6::startup_features(options),
         .use_cuda_graph = options.use_cuda_graph,
