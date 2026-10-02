@@ -9,6 +9,14 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$DistributionContractPath = Join-Path $Root "config\windows-sm75-distribution-contract.json"
+if (-not (Test-Path $DistributionContractPath -PathType Leaf)) {
+    throw "Distribution contract is missing: $DistributionContractPath"
+}
+$DistributionContract = Get-Content $DistributionContractPath -Raw | ConvertFrom-Json
+if ($DistributionContract.schema_version -ne 1 -or $DistributionContract.profile -ne "qwen3.8-27b-sm75") {
+    throw "Unexpected Windows SM75 distribution contract."
+}
 $Failures = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
 
@@ -18,22 +26,7 @@ function Warn([string]$Message) { $Warnings.Add($Message); Write-Host "[WARN] $M
 
 Write-Host "== NInfer SM75 installation verification =="
 
-$Required = @(
-    "bin\ninfer.exe",
-    "bin\ninfer-serve.exe",
-    "config\windows-sm75-artifacts.json",
-    "config\production-defaults.json",
-    "config\windows-sm75-toolchain.json",
-    "BUILD-TOOLCHAIN.json",
-    "SBOM.cdx.json",
-    "scripts\download-qwen38-windows-sm75.ps1",
-    "scripts\healthcheck-windows-sm75.ps1",
-    "scripts\manage-installed-server.ps1",
-    "launchers\Start-NInfer.bat",
-    "launchers\Start-NInfer-MTP.bat",
-    "launchers\Stop-NInfer.bat",
-    "install\first-run-wizard.ps1"
-)
+$Required = @($DistributionContract.required_package_files)
 foreach ($Rel in $Required) {
     if (Test-Path (Join-Path $Root $Rel) -PathType Leaf) { Pass $Rel }
     else { Fail "Missing $Rel" }

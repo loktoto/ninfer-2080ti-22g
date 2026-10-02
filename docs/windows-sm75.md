@@ -38,6 +38,22 @@ explicit source change followed by hosted CI and physical RTX 2080 Ti re-qualifi
 
 The production path does not use `-allow-unsupported-compiler`.
 
+## Distribution contract
+
+`config/windows-sm75-distribution-contract.json` is the single package/install layout contract.
+It defines the exact production runtime scripts, installer files, launchers, config files, docs and
+root evidence files expected in a Windows SM75 release.
+
+Hosted CI, physical RTX 2080 Ti qualification and release validation parse the same source contract
+before doing expensive work. Packaging embeds the contract, binds its SHA-256 into
+`BUILD-MANIFEST.json`, and package verification requires the embedded contract to match the checked
+out source. The installed verifier consumes the same required-file set, so package and installed-tree
+checks cannot silently drift apart.
+
+```powershell
+.\scripts\validate-windows-sm75-distribution-contract.ps1
+```
+
 ## One-click packaged installation
 
 Extract the release ZIP and run:

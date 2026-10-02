@@ -49,6 +49,7 @@ New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 Copy-Item (Join-Path $RepoRoot "config\windows-sm75-artifacts.json") (Join-Path $ConfigDir "windows-sm75-artifacts.json") -Force
 Copy-Item (Join-Path $RepoRoot "config\production-defaults.json") (Join-Path $ConfigDir "production-defaults.json") -Force
 Copy-Item (Join-Path $RepoRoot "config\windows-sm75-toolchain.json") (Join-Path $ConfigDir "windows-sm75-toolchain.json") -Force
+Copy-Item (Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json") (Join-Path $ConfigDir "windows-sm75-distribution-contract.json") -Force
 
 $RuntimeScriptsDir = Join-Path $StagePath "scripts"
 New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
@@ -127,6 +128,13 @@ if ([string]::IsNullOrWhiteSpace($vcpkgCommit) -or
 $cmakeVersion = ((& cmake.exe --version | Select-Object -First 1) -replace "^cmake version\s+","").Trim()
 if ($LASTEXITCODE -ne 0 -or -not $cmakeVersion) { throw "Unable to resolve CMake version." }
 
+$DistributionContractPath = Join-Path $ConfigDir "windows-sm75-distribution-contract.json"
+$DistributionContract = Get-Content $DistributionContractPath -Raw | ConvertFrom-Json
+if ($DistributionContract.schema_version -ne 1 -or $DistributionContract.profile -ne "qwen3.8-27b-sm75") {
+    throw "Unexpected Windows SM75 distribution contract."
+}
+$DistributionContractHash = (Get-FileHash $DistributionContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
 $ArtifactLockPath = Join-Path $RepoRoot "config\windows-sm75-artifacts.json"
 if (-not (Test-Path $ArtifactLockPath -PathType Leaf)) {
     throw "Artifact lock file not found: $ArtifactLockPath"
@@ -162,7 +170,7 @@ if ($vcRedistVersionObject -lt $vcRedistFloor) {
 
 $manifest = [ordered]@{
     artifact_type = "ninfer-windows-sm75-runtime"
-    schema_version = 2
+    schema_version = 3
     git_sha = $gitSha
     cuda_arch = "sm_75"
     target_gpu = "NVIDIA RTX 2080 Ti / Turing TU102"
@@ -175,6 +183,7 @@ $manifest = [ordered]@{
     artifact_channel = $ArtifactChannel
     artifact_lock_sha256 = $ArtifactLockHash
     toolchain_lock_sha256 = $ToolchainLockHash
+    distribution_contract_sha256 = $DistributionContractHash
     cuda_toolkit = $cudaVersion
     cuda_compiler = [string]$ToolchainRecord.cuda_compiler
     vcpkg_commit = [string]$ToolchainRecord.vcpkg_commit

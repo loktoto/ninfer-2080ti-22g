@@ -43,7 +43,7 @@ try {
     if (-not (Test-Path $SumsPath)) { throw "SHA256SUMS.txt missing from package." }
 
     $Manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
-    if ($Manifest.schema_version -ne 2) { throw "Unsupported manifest schema: $($Manifest.schema_version)" }
+    if ($Manifest.schema_version -ne 3) { throw "Unsupported manifest schema: $($Manifest.schema_version)" }
     if ($Manifest.cuda_arch -ne "sm_75") { throw "Unexpected CUDA architecture: $($Manifest.cuda_arch)" }
     if ($Manifest.artifact_type -ne "ninfer-windows-sm75-runtime") { throw "Unexpected artifact type." }
     if ($Manifest.build_profile -ne "qwen3.8-27b-sm75") { throw "Unexpected build profile: $($Manifest.build_profile)" }
@@ -65,6 +65,30 @@ try {
 
     if ([string]::IsNullOrWhiteSpace([string]$Manifest.toolchain_lock_sha256)) {
         throw "Build manifest is missing toolchain_lock_sha256."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$Manifest.distribution_contract_sha256)) {
+        throw "Build manifest is missing distribution_contract_sha256."
+    }
+
+    $DistributionContractPath = Join-Path $Stage.FullName "config\windows-sm75-distribution-contract.json"
+    if (-not (Test-Path $DistributionContractPath -PathType Leaf)) {
+        throw "Embedded distribution contract is missing."
+    }
+    $DistributionContract = Get-Content $DistributionContractPath -Raw | ConvertFrom-Json
+    if ($DistributionContract.schema_version -ne 1 -or $DistributionContract.profile -ne "qwen3.8-27b-sm75") {
+        throw "Embedded distribution contract is invalid."
+    }
+    $EmbeddedDistributionHash = (Get-FileHash $DistributionContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($EmbeddedDistributionHash -ne ([string]$Manifest.distribution_contract_sha256).ToLowerInvariant()) {
+        throw "Embedded distribution contract hash does not match BUILD-MANIFEST.json."
+    }
+    $SourceDistributionPath = Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json"
+    if (-not (Test-Path $SourceDistributionPath -PathType Leaf)) {
+        throw "Source distribution contract is missing."
+    }
+    $SourceDistributionHash = (Get-FileHash $SourceDistributionPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($SourceDistributionHash -ne $EmbeddedDistributionHash) {
+        throw "Packaged distribution contract does not match checked-out source."
     }
 
     $EmbeddedToolchainLockPath = Join-Path $Stage.FullName "config\windows-sm75-toolchain.json"
@@ -200,47 +224,20 @@ try {
         throw "Runtime defaults unexpectedly require a CUDA Toolkit."
     }
 
-    foreach ($Required in @(
-        "bin\ninfer.exe",
-        "bin\ninfer-serve.exe",
-        "scripts\run-server-windows-sm75.ps1",
-        "scripts\healthcheck-windows-sm75.ps1",
-        "scripts\smoke-test-windows-sm75.ps1",
-        "scripts\acceptance-windows-sm75.ps1",
-        "scripts\download-qwen38-windows-sm75.ps1",
-        "scripts\manage-installed-server.ps1",
-        "scripts\verify-acceptance-evidence.ps1",
-        "scripts\verify-windows-sm75.ps1",
-        "config\windows-sm75-artifacts.json",
-        "config\production-defaults.json",
-        "config\windows-sm75-toolchain.json",
-        "BUILD-TOOLCHAIN.json",
-        "SBOM.cdx.json",
-        "docs\INSTALL-WINDOWS-SM75.md",
-        "install\install-ninfer-sm75.ps1",
-        "install\install-ninfer-sm75.bat",
-        "install\first-run-wizard.ps1",
-        "install\verify-installation.ps1",
-        "install\repair-ninfer-sm75.ps1",
-        "install\uninstall-ninfer-sm75.ps1",
-        "launchers\Start-NInfer.bat",
-        "launchers\Start-NInfer-MTP.bat",
-        "launchers\Start-NInfer-Vision.bat",
-        "launchers\Start-NInfer-MTP-Vision.bat",
-        "launchers\Stop-NInfer.bat",
-        "launchers\Status-NInfer.bat",
-        "launchers\Configure-NInfer.bat",
-        "launchers\Check-NInfer.bat",
-        "launchers\Repair-NInfer.bat",
-        "launchers\Uninstall-NInfer.bat",
-        "launchers\Open-NInfer-Logs.bat",
-        "install\START-HERE.bat",
-        "install\README-FIRST.txt",
-        "START-HERE.bat",
-        "README-FIRST.txt"
-    )) {
-        if (-not (Test-Path (Join-Path $Stage.FullName $Required) -PathType Leaf)) {
-            throw "Required production package file is missing: $Required"
+    $RequiredSeen = @{}
+    foreach ($RequiredUnix in @($DistributionContract.required_package_files)) {
+        $RequiredUnix = ([string]$RequiredUnix).Replace("\","/")
+        if ([IO.Path]::IsPathRooted($RequiredUnix) -or $RequiredUnix -match "(^|/)\.\.(/|$)") {
+            throw "Unsafe required-package path in distribution contract: $RequiredUnix"
+        }
+        $RequiredKey = $RequiredUnix.ToLowerInvariant()
+        if ($RequiredSeen.ContainsKey($RequiredKey)) {
+            throw "Duplicate required-package path in distribution contract: $RequiredUnix"
+        }
+        $RequiredSeen[$RequiredKey] = $true
+        $RequiredPath = Join-Path $Stage.FullName ($RequiredUnix.Replace("/",[IO.Path]::DirectorySeparatorChar))
+        if (-not (Test-Path $RequiredPath -PathType Leaf)) {
+            throw "Required production package file is missing: $RequiredUnix"
         }
     }
 
