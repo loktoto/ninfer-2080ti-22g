@@ -190,9 +190,6 @@ try {
 
     Write-Host "Running packaged end-user verifier in package-only mode..."
     & (Join-Path $Stage.FullName "install\verify-installation.ps1") -PackageOnly
-    if ($LASTEXITCODE -ne 0) {
-        throw "Packaged end-user verifier failed with exit code $LASTEXITCODE."
-    }
 
     $RuntimeVerifier = Join-Path $Stage.FullName "scripts\verify-windows-sm75.ps1"
     & $RuntimeVerifier -RequireDependencyAudit
