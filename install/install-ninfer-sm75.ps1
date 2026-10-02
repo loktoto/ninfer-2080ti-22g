@@ -4,7 +4,7 @@ param(
     [string]$ModelDir = "",
     [ValidateRange(1,65535)]
     [int]$Port = 8080,
-    [ValidateRange(1024,262144)]
+    [ValidateRange(1024,131072)]
     [int]$MaxContext = 16384,
     [ValidateRange(-1,15)]
     [int]$Device = -1,
