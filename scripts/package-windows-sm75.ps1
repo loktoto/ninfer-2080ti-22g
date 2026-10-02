@@ -50,6 +50,7 @@ Copy-Item (Join-Path $RepoRoot "config\windows-sm75-artifacts.json") (Join-Path 
 Copy-Item (Join-Path $RepoRoot "config\production-defaults.json") (Join-Path $ConfigDir "production-defaults.json") -Force
 Copy-Item (Join-Path $RepoRoot "config\windows-sm75-toolchain.json") (Join-Path $ConfigDir "windows-sm75-toolchain.json") -Force
 Copy-Item (Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json") (Join-Path $ConfigDir "windows-sm75-distribution-contract.json") -Force
+Copy-Item (Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json") (Join-Path $ConfigDir "windows-sm75-distribution-contract.json") -Force
 
 $RuntimeScriptsDir = Join-Path $StagePath "scripts"
 New-Item -ItemType Directory -Force -Path $RuntimeScriptsDir | Out-Null
@@ -110,6 +111,14 @@ if ($ToolchainLock.schema_version -ne 1 -or $ToolchainLock.profile -ne "qwen3.8-
 if ([string]$ToolchainRecord.toolchain_lock_sha256 -ne $ToolchainLockHash) {
     throw "BUILD-TOOLCHAIN.json does not match the embedded production toolchain lock."
 }
+
+$DistributionContractPath = Join-Path $ConfigDir "windows-sm75-distribution-contract.json"
+$DistributionContract = Get-Content $DistributionContractPath -Raw | ConvertFrom-Json
+if ($DistributionContract.schema_version -ne 1 -or $DistributionContract.profile -ne "qwen3.8-27b-sm75") {
+    throw "Unexpected Windows SM75 distribution contract."
+}
+$DistributionContractHash = (Get-FileHash $DistributionContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
 $cudaVersion = ([string]$ToolchainRecord.cuda_compiler -replace "\.[0-9]+$","")
 
 $vcpkgCommit = $null
@@ -183,6 +192,7 @@ $manifest = [ordered]@{
     artifact_channel = $ArtifactChannel
     artifact_lock_sha256 = $ArtifactLockHash
     toolchain_lock_sha256 = $ToolchainLockHash
+    distribution_contract_sha256 = $DistributionContractHash
     distribution_contract_sha256 = $DistributionContractHash
     cuda_toolkit = $cudaVersion
     cuda_compiler = [string]$ToolchainRecord.cuda_compiler
