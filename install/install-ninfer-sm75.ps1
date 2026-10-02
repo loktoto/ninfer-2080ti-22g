@@ -211,7 +211,7 @@ function Copy-PackageAtomically([string]$Destination) {
             if (-not (Test-Path $Src -PathType Container)) { throw "Required package directory is missing: $Dir" }
             Copy-Item $Src (Join-Path $Stage $Dir) -Recurse -Force
         }
-        foreach ($File in @("README.md","LICENSE","BUILD-MANIFEST.json","SHA256SUMS.txt","README-FIRST.txt","START-HERE.bat")) {
+        foreach ($File in @("README.md","LICENSE","BUILD-MANIFEST.json","BUILD-TOOLCHAIN.json","SBOM.cdx.json","SHA256SUMS.txt","README-FIRST.txt","START-HERE.bat")) {
             $Src = Join-Path $PackageRoot $File
             if (Test-Path $Src -PathType Leaf) { Copy-Item $Src (Join-Path $Stage $File) -Force }
         }
