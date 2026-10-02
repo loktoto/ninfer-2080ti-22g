@@ -45,7 +45,7 @@ try {
     if ($Manifest.cuda_runtime_linkage -ne "static") { throw "Windows production package must use static CUDA runtime linkage." }
     if ([int]$Manifest.minimum_nvidia_driver_branch -lt 580) { throw "Manifest NVIDIA driver floor is below R580." }
     try {
-        $RequiredVc = [Version](([string]$Manifest.minimum_vc_redist_version).TrimStart("v","V"))
+        $RequiredVc = [Version](([string]$Manifest.minimum_vc_redist_version).TrimStart([char[]]"vV"))
     } catch {
         throw "Manifest minimum_vc_redist_version is missing or invalid."
     }
