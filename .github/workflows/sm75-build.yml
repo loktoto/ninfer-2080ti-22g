@@ -31,6 +31,7 @@ jobs:
           bash -n bench/targets/qwen3_6_27b/sm75_autotune.sh
           bash -n bench/targets/qwen3_6_27b/sm75_rk4v4e8_probe.sh
           bash -n bench/targets/qwen3_6_27b/sm75_long_context_quality.sh
+          bash -n bench/targets/qwen3_6_27b/sm75_build_resource_audit.sh
 
       - name: Configure SM75
         shell: bash
@@ -64,3 +65,18 @@ jobs:
         run: |
           ctest --test-dir build --output-on-failure \
             -R 'ninfer_(kv_capacity|serve_options|request_log|qwen3_6_runtime_mechanisms|qwen3_6_27b_load_plan|bench_support)_test'
+
+      - name: Build SM75 whole-program audit mode
+        shell: bash
+        run: |
+          # Compile and link the opt-in non-RDC path as a separate configuration. This proves the
+          # target does not depend on cross-TU device linking; physical 2080 Ti A/B measurements
+          # still decide whether whole-program codegen is faster enough to become the default.
+          cmake -S . -B build-whole-program -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_ARCHITECTURES=75 \
+            -DNINFER_CUDA_WHOLE_PROGRAM=ON \
+            -DBUILD_TESTING=OFF \
+            -DNINFER_BUILD_APPS=ON \
+            -DNINFER_BUILD_BENCHMARKS=OFF
+          cmake --build build-whole-program --parallel 1 --target ninfer
