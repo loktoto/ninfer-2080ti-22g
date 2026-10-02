@@ -76,6 +76,14 @@ find_package(Threads REQUIRED)
 # --- Subdirectories ----------------------------------------------------------
 add_subdirectory(src)
 
+# The decode-shaped W8 GEMV cores are a Turing-only route measured on RTX 2080 Ti. Keep the
+# generic source manifest unchanged for SM86/SM120a and add these launchers only to the SM75
+# archive where the dispatch table can select them.
+if(CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+  target_sources(ninfer_ops PRIVATE
+    src/ops/linear/w8/w8_decode_gemv.cu)
+endif()
+
 # NInfer currently has no cross-translation-unit device calls, device function pointers, dynamic
 # parallelism, or external device/constant definitions. Keep the established RDC build as the
 # default, but expose a controlled A/B mode for SM75 resource audits and WSL2 ptxas qualification.
