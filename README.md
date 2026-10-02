@@ -151,7 +151,7 @@ Production releases require a successful **self-hosted RTX 2080 Ti acceptance wo
 ### Linux / WSL2
 
 ```bash
-git clone https://github.com/mr-september/ninfer-2080ti-22g.git
+git clone https://github.com/loktoto/ninfer-2080ti-22g.git
 cd ninfer-2080ti-22g
 
 # Build for Turing sm_75 (default)
