@@ -117,6 +117,22 @@ if ([string]::IsNullOrWhiteSpace($ArtifactChannel)) {
     throw "Artifact lock channel is missing."
 }
 
+$vcRedistVersion = $null
+foreach ($RegistryPath in @(
+    "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64",
+    "HKLM:\SOFTWARE\Wow6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+)) {
+    if (-not (Test-Path $RegistryPath)) { continue }
+    $Runtime = Get-ItemProperty $RegistryPath -ErrorAction SilentlyContinue
+    if ($Runtime -and [int]$Runtime.Installed -eq 1 -and -not [string]::IsNullOrWhiteSpace([string]$Runtime.Version)) {
+        $vcRedistVersion = ([string]$Runtime.Version).TrimStart("v","V")
+        break
+    }
+}
+if ([string]::IsNullOrWhiteSpace($vcRedistVersion)) {
+    throw "Unable to resolve installed Microsoft Visual C++ x64 Redistributable version."
+}
+
 $manifest = [ordered]@{
     artifact_type = "ninfer-windows-sm75-runtime"
     schema_version = 2
@@ -127,6 +143,7 @@ $manifest = [ordered]@{
     build_profile = "qwen3.8-27b-sm75"
     cuda_runtime_linkage = "static"
     minimum_nvidia_driver_branch = 580
+    minimum_vc_redist_version = $vcRedistVersion
     installer_schema = 1
     artifact_channel = $ArtifactChannel
     artifact_lock_sha256 = $ArtifactLockHash
