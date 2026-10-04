@@ -118,6 +118,26 @@ void launch_tc_partial_i8(const Tensor& q, CacheInput input, const Tensor& pos, 
         const dim3 grid(Geometry::KVHeads, splits, invocation.batch_size);
         constexpr std::size_t kDynamicBytes =
             DynamicArena ? static_cast<std::size_t>(4 * KeyBlock * kGqaHeadDim) : 0u;
+#if defined(NINFER_SM75)
+        constexpr int kRowCount = TokenTile * Geometry::GroupSize;
+        constexpr int kRowTiles = (kRowCount + 15) / 16;
+        constexpr int kBr       = kRowTiles * 16;
+        constexpr std::size_t kQBytes = static_cast<std::size_t>(kBr) * kGqaHeadDim;
+        constexpr std::size_t kArenaStaticBytes =
+            DynamicArena ? 16u : static_cast<std::size_t>(4 * KeyBlock * kGqaHeadDim);
+        constexpr std::size_t kPBytes =
+            static_cast<std::size_t>(kBr) * KeyBlock * sizeof(__nv_bfloat16);
+        constexpr std::size_t kAlphaBytes = static_cast<std::size_t>(kBr) * sizeof(float);
+        constexpr std::size_t kScaleBytes =
+            static_cast<std::size_t>(2 * KeyBlock * kGqaKvQuantGroups) * sizeof(__half);
+        constexpr std::size_t kPageBytes = 64u * sizeof(std::int32_t);
+        constexpr std::size_t kStaticBytes =
+            kQBytes + kArenaStaticBytes + kPBytes + kAlphaBytes + kScaleBytes + kPageBytes;
+        static_assert(kStaticBytes <= 48u * 1024u,
+                      "SM75 GQA decode static shared memory exceeds the Turing 48 KiB limit");
+        static_assert(kStaticBytes + kDynamicBytes <= 64u * 1024u,
+                      "SM75 GQA decode total shared memory exceeds the Turing 64 KiB limit");
+#endif
         if constexpr (DynamicArena) {
             static const cudaError_t attr = cudaFuncSetAttribute(
                 gqa_attention_decode_i8_tiled_kernel<Geometry, TokenTile, WarpsPerCta,
@@ -152,7 +172,15 @@ void launch_tc_partial_i8(const Tensor& q, CacheInput input, const Tensor& pos, 
         } else if (implementation_window <= 2054) {
             launch.template operator()<12, 1, 32, false>();
         } else if (implementation_window <= 8198) {
+#if defined(NINFER_SM75)
+            // Turing exposes at most 64 KiB shared memory per block. The Bc=64 dynamic arena
+            // alone is 64 KiB and the kernel also owns q/p/scale/statics, so that profile cannot
+            // legally launch on SM75. Bc=32 keeps the complete static allocation just below the
+            // 48 KiB conventional per-block limit while preserving the established 12-warp route.
+            launch.template operator()<12, 1, 32, false>();
+#else
             launch.template operator()<12, 1, 64, true>();
+#endif
         } else {
             launch.template operator()<6, 2, 32, false>();
         }
