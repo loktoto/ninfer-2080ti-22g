@@ -320,14 +320,15 @@ __launch_bounds__(WarpsPerCta * 32, MinBlocksPerSm) __global__
         const int producer_row0 = warp * 16 + gid;
 #pragma unroll
         for (int g = 0; g < Groups; ++g) {
-            float qs0     = (lid == 0 && producer_row0 < RowCount)
+            // All four lanes in a gid quartet need the same scale. Reading the shared
+            // value directly lets SM75 use shared-memory multicast instead of a
+            // variable-source warp shuffle, which can force extra registers/spills.
+            q_scale_r0[g] = producer_row0 < RowCount
                                 ? q_scale_tmp[producer_row0 * Groups + g]
                                 : 0.0f;
-            float qs1     = (lid == 0 && producer_row0 + 8 < RowCount)
+            q_scale_r1[g] = producer_row0 + 8 < RowCount
                                 ? q_scale_tmp[(producer_row0 + 8) * Groups + g]
                                 : 0.0f;
-            q_scale_r0[g] = __shfl_sync(FullMask, qs0, gid * 4);
-            q_scale_r1[g] = __shfl_sync(FullMask, qs1, gid * 4);
         }
     }
     __syncthreads();
@@ -446,14 +447,11 @@ __launch_bounds__(WarpsPerCta * 32, MinBlocksPerSm) __global__
                     }
                     const int keya = nt * 8 + 2 * lid;
                     const int keyb = keya + 1;
-                    float ka       = 0.0f;
-                    float kb2      = 0.0f;
-                    if (gid == 0) {
-                        ka  = __half2float(k_scale_s[keya * Groups + g]);
-                        kb2 = __half2float(k_scale_s[keyb * Groups + g]);
-                    }
-                    ka  = __shfl_sync(FullMask, ka, lid);
-                    kb2 = __shfl_sync(FullMask, kb2, lid);
+                    // Lanes sharing the same lid consume the same pair of scales.
+                    // Turing shared memory multicasts these repeated addresses without
+                    // requiring a dynamic source-lane shuffle.
+                    const float ka  = __half2float(k_scale_s[keya * Groups + g]);
+                    const float kb2 = __half2float(k_scale_s[keyb * Groups + g]);
                     score[nt][0] += q_scale_r0[g] * ka * static_cast<float>(c0);
                     score[nt][1] += q_scale_r0[g] * kb2 * static_cast<float>(c1);
                     score[nt][2] += q_scale_r1[g] * ka * static_cast<float>(c2);
@@ -548,9 +546,9 @@ __launch_bounds__(WarpsPerCta * 32, MinBlocksPerSm) __global__
                 __nv_bfloat16* dst = &v_bf16[key_l * D + gqa_small_t_tc_swz(key_l, d)];
                 if (key >= split_start && key < split_end) {
                     const int grp = d >> 6;
-                    float vs      = 0.0f;
-                    if ((lane & 7) == 0) { vs = __half2float(v_scale_s[key_l * Groups + grp]); }
-                    vs = __shfl_sync(FullMask, vs, grp * 8);
+                    // Repeated loads of the same scale are shared-memory multicast on
+                    // SM75 and avoid the variable grp*8 shuffle source.
+                    const float vs = __half2float(v_scale_s[key_l * Groups + grp]);
                     store_vec(dst, gqa_kv_dequant_i8x8_from(&v_i8[key_l * D + d], vs));
                 } else {
                     store_vec(dst, make_int4(0, 0, 0, 0));
