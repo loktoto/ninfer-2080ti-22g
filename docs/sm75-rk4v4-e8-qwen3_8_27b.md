@@ -69,8 +69,9 @@ Why this profile:
   Turing INT8 Tensor Cores rather than depending on Ada/Blackwell-only kernel mechanisms.
 - The existing public 2080 Ti baseline found MTP3 to be a strong throughput point, but the best draft
   window is workload- and kernel-dependent. Treat MTP3 as a fallback, not a permanent tuning law.
-- `--kv-capacity auto` is preferred on 22GB because driver/display allocations, CUDA Graph state,
-  MTP state and optional Vision state change the actually available memory.
+- `--kv-capacity auto` is preferred for normal interactive use on 22GB because driver/display
+  allocations, CUDA Graph state, MTP state and optional Vision state change the actually available
+  memory. The explicit long-context probe below intentionally does not use automatic capacity.
 
 ## Physical-card autotune
 
@@ -85,7 +86,9 @@ chmod +x bench/targets/qwen3_6_27b/sm75_autotune.sh
 When `./build/bench/ninfer_bench` exists, the script uses it by default. Each profile loads the model
 once, performs the warmup and measured repetitions inside one Engine, and writes a structured JSON
 report. This avoids repeatedly reading/uploading the roughly 19GiB artifact for every repetition.
-If the benchmark binary is absent, the script falls back to the slower CLI-per-repetition path.
+If the benchmark binary is absent, the script falls back to the slower CLI-per-repetition path. Both
+paths request the same explicit `MAX_CONTEXT` KV capacity so INT8/RK4V4E8 comparisons do not silently
+measure different memory footprints.
 
 The default sweep compares:
 
@@ -94,8 +97,17 @@ The default sweep compares:
 - ordinary autoregressive decode versus MTP2, MTP3, MTP4 and MTP5
 - repeated greedy 256-token decode runs
 
-It records mean/stddev decode throughput, MTP acceptance and GPU snapshots including clocks, power,
-temperature and memory usage. `summary.tsv` prints the fastest measured profile on that card.
+It records prefill throughput, mean/stddev decode throughput, MTP acceptance and GPU snapshots
+including clocks, power, temperature and memory usage. The benchmark-mode report surfaces three
+profiles rather than collapsing unlike workloads into one number:
+
+- fastest decode profile
+- fastest prefill profile
+- balanced daily profile: retain profiles within 97% of the best decode rate, then select the highest
+  prefill throughput (decode breaks an exact prefill tie)
+
+The balanced selector is intentionally disabled for the CLI fallback because that path uses a short
+text prompt rather than the fixed 2,048-token benchmark corpus; its prefill rate is diagnostic only.
 Override `PREFILL_CHUNKS`, `DRAFTS`, `KV_MODES`, `MAX_CONTEXT`, `MAX_NEW`, `BENCH_PROMPT`, `WARMUP` or
 `REPS` when a wider sweep is required.
 
@@ -111,6 +123,19 @@ The autotune sweep is a throughput test, not a long-context capacity proof.
 The model's native target envelope is 262,144 tokens. This is an architectural maximum, not a claim
 that every 22GB card can allocate it with every runtime feature enabled.
 
+For Qwen3.8-27B RK4V4E8, one token of text KV consumes 17,408 bytes across the 16 full-attention
+layers. Enabling MTP adds another 1,088 bytes per token for its one attention layer. The resulting
+raw KV payload is approximately:
+
+- 64K: 1.0625 GiB text KV, plus 68 MiB with MTP
+- 128K: 2.125 GiB text KV, plus 136 MiB with MTP
+- 192K: 3.1875 GiB text KV, plus 204 MiB with MTP
+- 256K: 4.25 GiB text KV, plus 272 MiB with MTP
+
+Those figures exclude model weights, CUDA Graph state, workspace, allocator slack, Vision state and
+other driver/runtime allocations. They explain why 256K eager text-only is a plausible target while
+256K plus MTP/graph must be measured rather than assumed.
+
 Run:
 
 ```bash
@@ -125,9 +150,15 @@ Default fit ladder:
 3. 196,608
 4. 262,144
 
-Each eager row is marked PASS only after the model loads and generates one token with RK4V4E8 at
-that `--max-context`. The highest eager-fitting size is then retried with MTP3 + CUDA Graph so the
-extra speculative and graph reservations are included in the fit check.
+Each eager row uses `--max-context N --kv-capacity N`: the requested KV reservation is therefore
+explicit, not automatically shrunk to whatever happens to fit. A row is marked PASS only after the
+model loads with that exact capacity and generates one token with RK4V4E8. The highest eager-fitting
+size is then retried with MTP3 + CUDA Graph so the extra speculative and graph reservations are
+included in the fit check.
+
+Do not replace the explicit capacity in this probe with `--kv-capacity auto`. Automatic sizing is
+allowed to resolve below `--max-context`, which is appropriate for interactive use but would create a
+false-positive capacity result here.
 
 Do not publish 192K or 256K as a 2080 Ti 22GB ceiling unless that row passes on the physical card.
 A capacity allocation pass also does not replace long-context retrieval/quality validation.
@@ -171,6 +202,12 @@ Turing compute capability 7.5 has a strict per-block shared-memory ceiling. The 
 path deliberately uses a 32x32 tile with 8 warps and 44,288 bytes of shared scratch, keeping its
 static allocation below the conventional 48KiB threshold.
 
+Because the SM75 INT8/RK4V4E8 prefill tile is 32 keys while a paged-KV page holds 64 tokens, two
+successive tiles can address the two halves of the same physical page. Cache scale/K/V loads must use
+`(tile_k0 + key_l) & 63` as the in-page offset; using `key_l` alone aliases the second half back onto
+offsets 0-31. This branch preserves the absolute key-derived page offset and statically requires the
+page size to be divisible by the key tile size.
+
 The decode launcher also contains SM75-specific guards. The inherited TokenTile=6 / roughly 2K-8K
 INT8 route previously selected a KeyBlock=64 dynamic arena whose 64KiB arena alone exhausted the
 Turing per-block ceiling before the kernel's static scratch was counted. On SM75 that route now uses
@@ -195,6 +232,8 @@ Before treating a new tuning change as production-ready:
 6. Long-context retrieval and generation must be checked on the physical RTX 2080 Ti 22GB.
 7. A claimed best MTP/prefill profile must come from the physical-card autotune results, not a 4090
    benchmark copied across architectures.
+8. Capacity claims must come from an explicit `--kv-capacity N` probe; an automatic-capacity startup
+   is not evidence that the requested maximum context fits.
 
 The E8 implementation follows the upstream RK4V4E8 lineage: the nearest E8 point is projected before
 integer nibble storage. Half-integral coset coordinates cannot be represented exactly without an
