@@ -6,11 +6,23 @@ It is intentionally conservative about context ceilings: a context size is consi
 
 ## Build
 
+Runtime-only build:
+
 ```bash
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CUDA_ARCHITECTURES=75
 cmake --build build --parallel
+```
+
+For the preferred one-load-per-profile autotuner, include the production benchmark target:
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CUDA_ARCHITECTURES=75 \
+  -DNINFER_BUILD_BENCHMARKS=ON
+cmake --build build --parallel --target ninfer ninfer_bench
 ```
 
 CUDA 12.8 or newer is required. CUDA 12.9 is the compile-gate baseline for this branch.
@@ -26,6 +38,10 @@ That distinction is important on a 22GB card: artifact file size is not the same
 weight size. Validate-only DFlash2 objects consume neither the device weight arena nor H2D bandwidth.
 They remain schema-checked, so an incomplete or shape/format-incompatible DFlash2 payload is rejected
 instead of being silently ignored.
+
+Full DFlash2 execution is intentionally out of scope for this SM75 RK4V4E8 profile. Enabling it would
+materialize an additional backend and consume memory that is currently reserved for long-context KV;
+it should be evaluated as a separate short-context throughput profile rather than silently enabled.
 
 ## Recommended interactive profile
 
@@ -66,17 +82,27 @@ chmod +x bench/targets/qwen3_6_27b/sm75_autotune.sh
 ./bench/targets/qwen3_6_27b/sm75_autotune.sh MODEL.ninfer
 ```
 
+When `./build/bench/ninfer_bench` exists, the script uses it by default. Each profile loads the model
+once, performs the warmup and measured repetitions inside one Engine, and writes a structured JSON
+report. This avoids repeatedly reading/uploading the roughly 19GiB artifact for every repetition.
+If the benchmark binary is absent, the script falls back to the slower CLI-per-repetition path.
+
 The default sweep compares:
 
 - INT8 versus RK4V4E8 KV
 - prefill chunks 512 and 1024
-- ordinary autoregressive decode versus MTP2, MTP3 and MTP4
+- ordinary autoregressive decode versus MTP2, MTP3, MTP4 and MTP5
 - repeated greedy 256-token decode runs
 
-It records decode throughput, MTP acceptance and GPU snapshots including clocks, power, temperature
-and memory usage. `summary.tsv` prints the fastest measured profile on that card. Override
-`PREFILL_CHUNKS`, `DRAFTS`, `KV_MODES`, `MAX_CONTEXT`, `MAX_NEW`, `WARMUP` or `REPS` when a wider sweep
-is required.
+It records mean/stddev decode throughput, MTP acceptance and GPU snapshots including clocks, power,
+temperature and memory usage. `summary.tsv` prints the fastest measured profile on that card.
+Override `PREFILL_CHUNKS`, `DRAFTS`, `KV_MODES`, `MAX_CONTEXT`, `MAX_NEW`, `BENCH_PROMPT`, `WARMUP` or
+`REPS` when a wider sweep is required.
+
+MTP draft windows above five are deliberately not enabled in this PR. Newer Ada-targeted NInfer
+branches experiment with wider verification tiles, but the SM75 target needs a separately scoped
+kernel/graph qualification before increasing its target maximum. The autotuner only selects among
+profiles that this branch fully supports.
 
 The autotune sweep is a throughput test, not a long-context capacity proof.
 
@@ -141,18 +167,26 @@ speed can be neutral or slightly worse because packed-code unpack and rotations 
 
 ## SM75 resource constraints
 
-Turing compute capability 7.5 has 32 resident warps per SM and a 64KB maximum shared-memory carveout.
-The current SM75 prefill path deliberately uses a 32x32 tile with 8 warps and 44,288 bytes of shared
-scratch, keeping the static allocation below the conventional 48KB per-block threshold. Do not widen
-the tile merely because a newer GPU profile uses more shared memory: change tile geometry only after
-physical-card register/occupancy and throughput measurements show a net win.
+Turing compute capability 7.5 has a strict per-block shared-memory ceiling. The current SM75 prefill
+path deliberately uses a 32x32 tile with 8 warps and 44,288 bytes of shared scratch, keeping its
+static allocation below the conventional 48KiB threshold.
+
+The decode launcher also contains SM75-specific guards. The inherited TokenTile=6 / roughly 2K-8K
+INT8 route previously selected a KeyBlock=64 dynamic arena whose 64KiB arena alone exhausted the
+Turing per-block ceiling before the kernel's static scratch was counted. On SM75 that route now uses
+the established KeyBlock=32 static profile instead. Compile-time assertions reject any SM75 decode
+specialization whose static allocation exceeds 48KiB or whose static+dynamic allocation exceeds
+64KiB. SM86/SM120 scheduling is unchanged.
+
+Do not widen tiles merely because a newer GPU profile uses more shared memory: change tile geometry
+only after physical-card register/occupancy and throughput measurements show a net win.
 
 ## Correctness gates
 
 Before treating a new tuning change as production-ready:
 
 1. SM75 CUDA compile gate must pass.
-2. Runtime layout, serve-option and benchmark parser contract tests must pass.
+2. Runtime layout, serve-option, request-log and benchmark parser contract tests must pass.
 3. BF16/INT8 existing paths must remain unchanged in dispatch.
 4. Optional DFlash2 payload must remain validate-only on this SM75 profile unless a separately scoped
    implementation deliberately enables that backend.
