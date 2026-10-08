@@ -1,5 +1,9 @@
-NInfer Qwen3.8-27B / RTX 2080 Ti 22GB - START HERE
+NInfer SM75 by loktoto / Qwen3.8-27B - START HERE
 ===================================================
+
+Maintained by: https://github.com/loktoto/ninfer-2080ti-22g
+Derived from:  https://github.com/Neroued/ninfer (Apache-2.0)
+This package should only be used from a hardware-qualified release.
 
 Normal installation:
   1. Extract the entire ZIP.

@@ -1,4 +1,6 @@
-# Native Windows production build — RTX 2080 Ti 22GB (SM75)
+# NInfer SM75 · loktoto Edition — native Windows build
+
+Maintained by [loktoto](https://github.com/loktoto), based on the Apache-2.0 [NInfer](https://github.com/Neroued/ninfer) project. Native Windows package publication requires a successful exact-SHA **physical RTX 2080 Ti 22GB acceptance**; source build and hosted CI are not release certification.
 
 This branch provides the native Windows/MSVC product path for the Turing `sm_75` port.
 The deliverable is a staged runtime plus a checksummed ZIP; WSL2 is not required.

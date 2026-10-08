@@ -1,7 +1,9 @@
-# NInfer documentation
+# NInfer SM75 · loktoto Edition — documentation
 
-Start with the [project README](../README.md) to build NInfer, download a published artifact, and
+Start with the [loktoto-maintained project README](../README.md) to build NInfer, download a published artifact, and
 run the CLI or HTTP server.
+
+The [current project status](PROJECT-STATUS.md) distinguishes available source functionality from the **unreleased** native Windows path. Windows install/build documentation currently lives in [`windows-native-sm75`](https://github.com/loktoto/ninfer-2080ti-22g/tree/windows-native-sm75/docs): [install guide](https://github.com/loktoto/ninfer-2080ti-22g/blob/windows-native-sm75/docs/INSTALL-WINDOWS-SM75.md), [technical runbook](https://github.com/loktoto/ninfer-2080ti-22g/blob/windows-native-sm75/docs/windows-sm75.md).
 
 ## User guides
 
