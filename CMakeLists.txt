@@ -14,10 +14,34 @@ endif()
 
 project(ninfer-2080ti-22g LANGUAGES C CXX CUDA)
 
+if(MSVC)
+  add_compile_definitions(
+    CCCL_IGNORE_MSVC_TRADITIONAL_PREPROCESSOR_WARNING
+    NOMINMAX
+    WIN32_LEAN_AND_MEAN)
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:C,CXX>:/utf-8>
+    $<$<COMPILE_LANGUAGE:C,CXX>:/Zc:preprocessor>)
+elseif(WIN32)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
 # --- Global settings ---------------------------------------------------------
 option(NINFER_BUILD_APPS "Build the NInfer CLI and server" ON)
 option(BUILD_TESTING "Build NInfer tests" OFF)
 option(NINFER_BUILD_BENCHMARKS "Build NInfer benchmarks" OFF)
+option(NINFER_BUILD_SM75_W8_REGRESSION
+  "Build the focused SM75 W8 LinearPair conformance executable" OFF)
+option(NINFER_QWEN38_ONLY
+  "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
+
+if(NINFER_QWEN38_ONLY)
+  if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+    message(FATAL_ERROR "NINFER_QWEN38_ONLY is the SM75 production profile")
+  endif()
+  add_compile_definitions(NINFER_QWEN38_ONLY=1)
+  message(STATUS "NInfer profile: Qwen3.8-27B / SM75 production")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,16 +87,53 @@ if(NINFER_BUILD_APPS OR BUILD_TESTING)
 endif()
 
 find_package(CUDAToolkit REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-  libavformat>=60 libavcodec>=60 libavutil>=58 libswscale>=7)
-if(NINFER_BUILD_MEDIA_ACQUIRE)
-  pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl>=7.85)
+
+if(WIN32)
+  # vcpkg's FFmpeg port provides FindFFMPEG.cmake rather than an upstream
+  # package config. Normalize it to the same imported target name used by the
+  # Linux/pkg-config path so the rest of the build stays platform-neutral.
+  find_package(FFMPEG REQUIRED)
+  add_library(PkgConfig::FFMPEG INTERFACE IMPORTED GLOBAL)
+  target_include_directories(PkgConfig::FFMPEG INTERFACE ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(PkgConfig::FFMPEG INTERFACE ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(PkgConfig::FFMPEG INTERFACE ${FFMPEG_LIBRARIES})
+
+  if(NINFER_BUILD_MEDIA_ACQUIRE)
+    find_package(CURL 7.85 REQUIRED)
+    add_library(PkgConfig::LIBCURL INTERFACE IMPORTED GLOBAL)
+    target_link_libraries(PkgConfig::LIBCURL INTERFACE CURL::libcurl)
+  endif()
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+    libavformat>=60 libavcodec>=60 libavutil>=58 libswscale>=7)
+  if(NINFER_BUILD_MEDIA_ACQUIRE)
+    pkg_check_modules(LIBCURL REQUIRED IMPORTED_TARGET libcurl>=7.85)
+  endif()
 endif()
 find_package(Threads REQUIRED)
 
 # --- Subdirectories ----------------------------------------------------------
 add_subdirectory(src)
+
+if(NINFER_BUILD_SM75_W8_REGRESSION)
+  if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+    message(FATAL_ERROR "NINFER_BUILD_SM75_W8_REGRESSION requires CMAKE_CUDA_ARCHITECTURES=75")
+  endif()
+  if(NOT BUILD_TESTING)
+    add_executable(ninfer_linear_pair_w8_a16_test
+      tests/ops/linear_pair/test_w8_a16.cpp
+      tests/ops/linear_pair/linear_pair_test_common.cpp)
+    target_include_directories(ninfer_linear_pair_w8_a16_test PRIVATE
+      ${PROJECT_SOURCE_DIR}/tests
+      ${PROJECT_SOURCE_DIR}/include
+      ${PROJECT_SOURCE_DIR}/src
+      ${PROJECT_SOURCE_DIR}/third_party
+      ${PROJECT_SOURCE_DIR}/third_party/utf8proc)
+    target_link_libraries(ninfer_linear_pair_w8_a16_test PRIVATE ninfer_ops)
+  endif()
+endif()
+
 if(NINFER_BUILD_APPS)
   add_subdirectory(apps)
 endif()

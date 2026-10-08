@@ -189,6 +189,22 @@ void test_common_validation() {
     {
         auto directory = normative_directory();
         auto fixture =
+            write_fixture(directory, "future_v3", ninfer::test::artifact_fixture::kV3Magic);
+        bool rejected = false;
+        try {
+            Reader reader(fixture.path);
+        } catch (const ninfer::artifact::ArtifactError& error) {
+            if (std::string_view(error.what()).find("pinned v2 artifact") ==
+                std::string_view::npos) {
+                throw std::runtime_error("v3 rejection omitted pinned-v2 guidance");
+            }
+            rejected = true;
+        }
+        if (!rejected) { throw std::runtime_error("v3 artifact was accepted"); }
+    }
+    {
+        auto directory = normative_directory();
+        auto fixture =
             write_fixture(directory, "legacy_v1", ninfer::test::artifact_fixture::kV1Magic);
         try {
             Reader reader(fixture.path);

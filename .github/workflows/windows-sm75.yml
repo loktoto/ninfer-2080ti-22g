@@ -1,0 +1,146 @@
+name: Windows SM75 production build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-sm75-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  powershell51-preflight:
+    name: Windows PowerShell 5.1 source preflight
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify distributable source contract
+        shell: powershell
+        run: .\scripts\validate-windows-sm75-distribution-contract.ps1
+
+      - name: Parse all shipped PowerShell scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) {
+            throw "This compatibility gate requires Windows PowerShell 5.1."
+          }
+          $scriptDirs = @('install', 'scripts')
+          $scripts = @($scriptDirs | ForEach-Object {
+            Get-ChildItem -LiteralPath $_ -Filter '*.ps1' -File -Recurse
+          })
+          if ($scripts.Count -eq 0) {
+            throw 'No install/build scripts were found for compatibility validation.'
+          }
+          $failures = New-Object 'System.Collections.Generic.List[string]'
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName, [ref]$tokens, [ref]$parseErrors
+            )
+            foreach ($parseError in $parseErrors) {
+              $failures.Add(('{0}:{1}: {2}' -f $script.FullName,
+                $parseError.Extent.StartLineNumber, $parseError.Message))
+            }
+          }
+          if ($failures.Count -ne 0) {
+            throw ('Windows PowerShell 5.1 parsing failed:' +
+              [Environment]::NewLine + ($failures -join [Environment]::NewLine))
+          }
+          Write-Host ("Validated {0} PowerShell scripts using Windows PowerShell 5.1 AST parser." -f $scripts.Count)
+
+      - name: Test model-preserving runtime upgrade and rollback
+        shell: powershell
+        run: .\\scripts\\test-windows-sm75-upgrade-model.ps1
+
+  build:
+    needs: powershell51-preflight
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Validate distribution source contract
+        shell: powershell
+        run: .\scripts\validate-windows-sm75-distribution-contract.ps1
+
+      - name: Activate MSVC 2022
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Install CUDA 13.1 toolkit
+        uses: ggml-org/llama.cpp/.github/actions/windows-setup-cuda@e904318a2d3e2382e78c98b4353c5dd569c079f6
+        with:
+          cuda_version: "13.1"
+          cuda_arch: "75"
+
+      - name: Install pinned CMake and Ninja
+        shell: pwsh
+        run: |
+          choco install cmake --version=3.31.6 --allow-downgrade --no-progress -y --installargs 'ADD_CMAKE_TO_PATH=System'
+          choco install ninja --version=1.13.2 --allow-downgrade --no-progress -y
+          $env:PATH = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
+
+      - name: Cache vcpkg build products
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .deps/vcpkg/downloads
+            .deps/vcpkg/installed
+            ~/AppData/Local/vcpkg/archives
+          key: vcpkg-sm75-${{ runner.os }}-b3ae22aef2b857af6e80d756c13f15db12be4e8a
+
+      - name: Verify pinned production toolchain
+        shell: pwsh
+        run: .\scripts\assert-windows-sm75-toolchain.ps1
+
+      - name: Build and stage native SM75 runtime
+        shell: pwsh
+        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2 -BuildW8Regression
+
+      - name: Verify packaged binaries start
+        shell: pwsh
+        run: .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
+
+      - name: Package release artifact
+        shell: pwsh
+        run: .\scripts\package-windows-sm75.ps1
+
+      - name: Verify release package integrity
+        shell: pwsh
+        run: .\scripts\verify-package-windows-sm75.ps1
+
+      - name: Validate Windows PowerShell 5.1 package path
+        shell: powershell
+        run: |
+          @(".\scripts",".\install") | ForEach-Object {
+            Get-ChildItem $_ -Filter *.ps1 -File
+          } | ForEach-Object {
+            [void][ScriptBlock]::Create((Get-Content $_.FullName -Raw))
+          }
+          .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
+          .\scripts\package-windows-sm75.ps1
+          .\scripts\verify-package-windows-sm75.ps1
+
+      - name: Upload production package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ninfer-windows-sm75-${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.zip.sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14

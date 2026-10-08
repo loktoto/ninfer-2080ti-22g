@@ -131,9 +131,13 @@ GenerationResult GenerationHandle::wait(OutputSink* sink, const CancellationView
 class Engine::Impl {
 public:
     using Executor27 = runtime::ConcurrentExecutor<targets::Qwen3_6_27BInstance>;
+#if !defined(NINFER_QWEN38_ONLY)
     using Executor35 = runtime::ConcurrentExecutor<targets::Qwen3_6_35BA3BInstance>;
     using Executor =
         std::variant<std::monostate, std::unique_ptr<Executor27>, std::unique_ptr<Executor35>>;
+#else
+    using Executor = std::variant<std::monostate, std::unique_ptr<Executor27>>;
+#endif
 
     explicit Impl(EngineOptions engine_options)
         : options(std::move(engine_options)), device(options.device) {
@@ -147,9 +151,12 @@ public:
                     typename std::remove_reference_t<decltype(target_ptr)>::element_type;
                 if constexpr (std::is_same_v<Instance, targets::Qwen3_6_27BInstance>) {
                     return std::make_unique<Executor27>(*target_ptr, options);
-                } else {
+                }
+#if !defined(NINFER_QWEN38_ONLY)
+                else {
                     return std::make_unique<Executor35>(*target_ptr, options);
                 }
+#endif
             },
             active);
     }

@@ -2,9 +2,17 @@
 
 #include <curl/curl.h>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -26,6 +34,30 @@ namespace ninfer::product::media_acquire {
 namespace {
 
 using Clock = std::chrono::steady_clock;
+
+#ifdef _WIN32
+class WinSockRuntime final {
+public:
+    WinSockRuntime() {
+        WSADATA data{};
+        const int rc = ::WSAStartup(MAKEWORD(2, 2), &data);
+        if (rc != 0) {
+            throw Error(ErrorKind::RemoteUnavailable,
+                        "failed to initialize WinSock: " + std::to_string(rc));
+        }
+    }
+
+    ~WinSockRuntime() { ::WSACleanup(); }
+
+    WinSockRuntime(const WinSockRuntime&)            = delete;
+    WinSockRuntime& operator=(const WinSockRuntime&) = delete;
+};
+
+void ensure_winsock() {
+    static const WinSockRuntime runtime;
+    (void)runtime;
+}
+#endif
 
 void check_control(const Policy& policy) {
     if (policy.is_cancelled && policy.is_cancelled()) {
@@ -142,7 +174,20 @@ UrlParts parse_url(std::string_view value) {
     return out;
 }
 
+std::string gai_error_message(int code) {
+#ifdef _WIN32
+    const char* message = gai_strerrorA(code);
+#else
+    const char* message = gai_strerror(code);
+#endif
+    return message != nullptr ? std::string(message)
+                              : ("socket resolver error " + std::to_string(code));
+}
+
 std::string resolve_public(const UrlParts& url, bool allow_private) {
+#ifdef _WIN32
+    ensure_winsock();
+#endif
     addrinfo hints{};
     hints.ai_family   = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -150,7 +195,7 @@ std::string resolve_public(const UrlParts& url, bool allow_private) {
     const int rc      = getaddrinfo(url.host.c_str(), url.port.c_str(), &hints, &raw);
     if (rc != 0) {
         throw Error(ErrorKind::RemoteUnavailable,
-                    "failed to resolve media URL host: " + std::string(gai_strerror(rc)));
+                    "failed to resolve media URL host: " + gai_error_message(rc));
     }
     std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> addresses(raw, freeaddrinfo);
     std::string selected;
@@ -287,7 +332,9 @@ std::vector<std::uint8_t> read_path(const Source& source, const Policy& policy) 
     if (!policy.media_root.empty()) {
         const std::filesystem::path root = std::filesystem::weakly_canonical(policy.media_root, ec);
         const auto relative              = std::filesystem::relative(path, root, ec);
-        if (ec || relative.empty() || relative.native().starts_with("..")) {
+        const bool escapes_root =
+            !relative.empty() && *relative.begin() == std::filesystem::path("..");
+        if (ec || relative.empty() || escapes_root) {
             throw std::invalid_argument("media path is outside configured media root");
         }
     }

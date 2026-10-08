@@ -25,6 +25,9 @@ inline constexpr std::array<std::uint8_t, 8> kV1Magic = {
 inline constexpr std::array<std::uint8_t, 8> kMagic = {
     'N', 'I', 'N', 'F', 'E', 'R', 0, 2,
 };
+inline constexpr std::array<std::uint8_t, 8> kV3Magic = {
+    'N', 'I', 'N', 'F', 'E', 'R', 0, 3,
+};
 
 inline std::uint64_t align_up(std::uint64_t value, std::uint64_t alignment) {
     return (value + alignment - 1) / alignment * alignment;

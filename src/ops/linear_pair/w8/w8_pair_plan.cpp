@@ -39,7 +39,14 @@ constexpr std::array<W8PairRouteSpec, 37> kK2048Routes{{
     {105, 112, W8PairScheduleId::DualSplitKMediumC112},
     {113, 128, W8PairScheduleId::DualSplitKMediumC128},
     {129, 160, W8PairScheduleId::DualSplitKMediumC160},
+#if defined(NINFER_SM75)
+    // A 192-column DualSplitK tile exceeds the SM75 shared-memory envelope. Route the complete
+    // 161..192 range through the qualified concat MMA path instead of silently launching a
+    // 160-column tile and leaving the tail columns unwritten.
+    {161, 192, W8PairScheduleId::ConcatMmaR32C64},
+#else
     {161, 192, W8PairScheduleId::DualSplitKMediumC192},
+#endif
     {193, 384, W8PairScheduleId::ConcatMmaR32C64},
     {385, 480, W8PairScheduleId::ConcatMmaR32C96},
     {481, 640, W8PairScheduleId::ConcatMmaR32C128},
