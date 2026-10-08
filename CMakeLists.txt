@@ -34,6 +34,8 @@ option(NINFER_BUILD_SM75_W8_REGRESSION
   "Build the focused SM75 W8 LinearPair conformance executable" OFF)
 option(NINFER_QWEN38_ONLY
   "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
+option(NINFER_CUDA_WHOLE_PROGRAM
+  "Disable relocatable CUDA device code for whole-program ptxas optimization" OFF)
 
 if(NINFER_QWEN38_ONLY)
   if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
@@ -115,6 +117,23 @@ find_package(Threads REQUIRED)
 
 # --- Subdirectories ----------------------------------------------------------
 add_subdirectory(src)
+
+# NInfer currently has no cross-translation-unit device calls, device function pointers, dynamic
+# parallelism, or external device/constant definitions. Keep the established RDC build as the
+# default, but expose a controlled A/B mode for SM75 resource audits and WSL2 ptxas qualification.
+# The option is applied after src creates the targets so it overrides their archive defaults without
+# changing the normal build path.
+if(NINFER_CUDA_WHOLE_PROGRAM)
+  foreach(target IN ITEMS ninfer_core ninfer_ops)
+    if(TARGET ${target})
+      set_target_properties(${target} PROPERTIES
+        CUDA_SEPARABLE_COMPILATION OFF
+        CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+    endif()
+  endforeach()
+  message(STATUS "NInfer CUDA whole-program mode enabled (RDC disabled for core/ops)")
+endif()
+
 
 if(NINFER_BUILD_SM75_W8_REGRESSION)
   if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
