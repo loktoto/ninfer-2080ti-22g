@@ -294,9 +294,10 @@ function Copy-PackageAtomically([string]$Destination) {
                 Move-Item -LiteralPath $Backup -Destination $DestFull
             }
         } catch {
-            throw ("Windows upgrade failed: {0}. Rollback also failed: {1}. " +
-                "Do not delete the recovery directory {2}.") -f $OriginalError.Exception.Message,
-                $_.Exception.Message, $Backup
+            $RollbackMessage = ("Windows upgrade failed: {0}. Rollback also failed: {1}. " +
+                "Do not delete the recovery directory {2}.") -f
+                $OriginalError.Exception.Message, $_.Exception.Message, $Backup
+            throw $RollbackMessage
         } finally {
             Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
         }
