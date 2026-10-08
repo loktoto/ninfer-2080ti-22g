@@ -5,8 +5,10 @@ set -Eeuo pipefail
 #
 # This deliberately distinguishes a successful allocator/runtime fit from a
 # performance claim. A context size is only printed as PASS after NInfer has
-# loaded the artifact, resolved the compressed KV capacity, and generated a
-# token on the selected device.
+# loaded the artifact, reserved that exact KV token capacity, and generated a
+# token on the selected device. Do not use --kv-capacity auto here: automatic
+# sizing is allowed to resolve below --max-context and would make a large-context
+# allocation probe report false positives.
 #
 # Usage:
 #   ./bench/targets/qwen3_6_27b/sm75_rk4v4e8_probe.sh MODEL.ninfer [NINFER_BIN]
@@ -15,7 +17,7 @@ set -Eeuo pipefail
 #   DEVICE=0
 #   CONTEXTS="65536 131072 196608 262144"
 #   PREFILL_CHUNK=1024
-#   MTP_DRAFT=3              # 0 disables the MTP pass
+#   MTP_DRAFT=3              # 0 disables the MTP+graph pass
 #   LOG_DIR=sm75-rk4v4e8-probe
 
 MODEL=${1:-}
@@ -71,7 +73,7 @@ run_probe() {
   "${BIN}" "${MODEL}" \
     --prompt "Reply with exactly: OK" \
     --max-context "${context}" \
-    --kv-capacity auto \
+    --kv-capacity "${context}" \
     --prefill-chunk "${PREFILL_CHUNK}" \
     --kv-dtype rk4v4-e8 \
     --device "${DEVICE}" \
@@ -93,7 +95,8 @@ run_probe() {
   return 1
 }
 
-highest_base=0
+highest_eager=0
+eager_passed=()
 for context in ${CONTEXTS}; do
   if ! [[ "${context}" =~ ^[0-9]+$ ]] || (( context <= 0 || context > 262144 )); then
     echo "invalid context in CONTEXTS: ${context}" >&2
@@ -101,24 +104,35 @@ for context in ${CONTEXTS}; do
   fi
 
   if run_probe "${context}" eager --no-cuda-graph; then
-    highest_base=${context}
+    highest_eager=${context}
+    eager_passed+=("${context}")
   else
     # Capacity is monotonic for this fixed model/storage profile. Once a larger
-    # context fails to fit, later sizes are expected to fail as well; keep the
-    # log concise instead of reloading 17 GiB weights repeatedly.
+    # explicit context reservation fails, later sizes are expected to fail as well;
+    # keep the log concise instead of reloading the weights repeatedly.
     break
   fi
 done
 
-if (( MTP_DRAFT > 0 && highest_base > 0 )); then
-  # Re-test the highest eager-fitting context with the intended fast path.
-  # MTP and CUDA graph reserve additional state, so this can legitimately fail
-  # even when the eager allocator probe passed.
-  run_probe "${highest_base}" "mtp${MTP_DRAFT}-graph" \
-    --spec mtp --draft-tokens "${MTP_DRAFT}" --lm-head-draft || true
+highest_mtp_graph=0
+if (( MTP_DRAFT > 0 && ${#eager_passed[@]} > 0 )); then
+  # Resolve the usable MTP+CUDA-Graph ceiling independently from eager capacity.
+  # Start from the largest eager-fitting rung. If graph/speculative state pushes it
+  # over the VRAM limit, walk downward until the first exact-capacity profile passes.
+  for ((i = ${#eager_passed[@]} - 1; i >= 0; --i)); do
+    context=${eager_passed[$i]}
+    if run_probe "${context}" "mtp${MTP_DRAFT}-graph" \
+      --spec mtp --draft-tokens "${MTP_DRAFT}" --lm-head-draft; then
+      highest_mtp_graph=${context}
+      break
+    fi
+  done
 fi
 
 echo
 echo "Results: ${SUMMARY}"
-echo "Highest eager RK4V4E8 fit observed in this run: ${highest_base} tokens"
+echo "Highest explicit eager RK4V4E8 fit observed: ${highest_eager} tokens"
+if (( MTP_DRAFT > 0 )); then
+  echo "Highest explicit RK4V4E8 + MTP${MTP_DRAFT} + CUDA Graph fit observed: ${highest_mtp_graph} tokens"
+fi
 echo "Do not publish a 192K/256K ceiling unless the corresponding row is PASS on the actual 22GB card."

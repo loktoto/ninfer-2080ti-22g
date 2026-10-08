@@ -20,6 +20,8 @@ using ninfer::artifact::NumericFormat;
 using ninfer::targets::qwen3_6_27b::Package;
 using namespace ninfer::targets::qwen3_6_27b::detail;
 
+inline constexpr std::size_t kDFlash2ObjectCount = 66;
+
 std::filesystem::path artifact_path(const char* environment, const char* filename) {
     if (const char* value = std::getenv(environment); value != nullptr && *value != '\0') {
         return value;
@@ -50,13 +52,23 @@ int verify_groupwise(const std::filesystem::path& path) {
         return 1;
     }
     ninfer::artifact::Binder binder(reader);
+    const bool has_dflash2 = binder.has_object("dflash2/feature_projection");
+    const std::size_t dflash2_objects = has_dflash2 ? kDFlash2ObjectCount : 0;
     const ArtifactLoadPlan plan =
         bind_artifact(binder, WeightsProfile::Qwen36GroupwiseInt, all_features());
-    if (plan.materialization.object_count != 1124 ||
+    const std::size_t validate_only = plan.materialization.object_count -
+                                      plan.materialization.device_objects.size() -
+                                      plan.materialization.host_objects.size();
+    if (plan.materialization.object_count != 1124 + dflash2_objects ||
         plan.materialization.device_objects.size() != 1118 ||
-        plan.materialization.host_objects.size() != 6 ||
+        plan.materialization.host_objects.size() != 6 || validate_only != dflash2_objects ||
         plan.materialization.device_capacity_bytes == 0) {
-        std::cerr << "groupwise materialization plan is incomplete\n";
+        std::cerr << "groupwise materialization plan is incomplete: objects="
+                  << plan.materialization.object_count
+                  << " device=" << plan.materialization.device_objects.size()
+                  << " host=" << plan.materialization.host_objects.size()
+                  << " validate_only=" << validate_only
+                  << " dflash2=" << (has_dflash2 ? "present" : "absent") << '\n';
         return 1;
     }
     if (plan.bindings.token_embedding.format != NumericFormat::Q6G64_F16S ||
@@ -91,19 +103,24 @@ int verify_nvfp4(const std::filesystem::path& path) {
         return 1;
     }
     ninfer::artifact::Binder binder(reader);
+    const bool has_dflash2 = binder.has_object("dflash2/feature_projection");
+    const std::size_t dflash2_objects = has_dflash2 ? kDFlash2ObjectCount : 0;
     const ArtifactLoadPlan plan =
         bind_artifact(binder, WeightsProfile::Qwen36Nvfp4, all_features());
-    if (plan.materialization.object_count != 1307 ||
+    const std::size_t validate_only = plan.materialization.object_count -
+                                      plan.materialization.device_objects.size() -
+                                      plan.materialization.host_objects.size();
+    if (plan.materialization.object_count != 1307 + dflash2_objects ||
         plan.materialization.device_objects.size() != 1054 ||
         plan.materialization.host_objects.size() != 6 ||
-        plan.materialization.object_count - plan.materialization.device_objects.size() -
-                plan.materialization.host_objects.size() !=
-            247 ||
+        validate_only != 247 + dflash2_objects ||
         plan.materialization.device_capacity_bytes == 0) {
         std::cerr << "NVFP4 materialization plan is incomplete: objects="
                   << plan.materialization.object_count
                   << " device=" << plan.materialization.device_objects.size()
-                  << " host=" << plan.materialization.host_objects.size() << '\n';
+                  << " host=" << plan.materialization.host_objects.size()
+                  << " validate_only=" << validate_only
+                  << " dflash2=" << (has_dflash2 ? "present" : "absent") << '\n';
         return 1;
     }
     if (plan.bindings.token_embedding.format != NumericFormat::W8G32_F16S ||
