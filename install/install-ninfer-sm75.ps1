@@ -209,6 +209,8 @@ function Copy-PackageAtomically([string]$Destination) {
     $Stage = "$DestFull.__new_$PID"
     $Backup = "$DestFull.__backup_$PID"
     $Preserve = Join-Path ([IO.Path]::GetTempPath()) ("ninfer-preserve-" + [guid]::NewGuid().ToString("N"))
+    $OldRuntimeMoved = $false
+    $ModelTransferred = $false
 
     Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $Backup -Recurse -Force -ErrorAction SilentlyContinue
@@ -243,9 +245,25 @@ function Copy-PackageAtomically([string]$Destination) {
                 }
             }
             Move-Item $DestFull $Backup
+            $OldRuntimeMoved = $true
         }
 
         Move-Item $Stage $DestFull
+
+        # On machines without D:, the default model directory is inside the
+        # runtime root. Move it on the same volume before deleting the backup:
+        # copying/re-downloading the 18 GiB pinned artifact is not acceptable.
+        if ($OldRuntimeMoved) {
+            $OldModels = Join-Path $Backup "models"
+            $NewModels = Join-Path $DestFull "models"
+            if (Test-Path $OldModels -PathType Container) {
+                if (Test-Path $NewModels) {
+                    throw "New package unexpectedly contains a models directory; refusing to overwrite the installed model."
+                }
+                Move-Item -LiteralPath $OldModels -Destination $NewModels
+                $ModelTransferred = $true
+            }
+        }
 
         if (Test-Path $Preserve -PathType Container) {
             Get-ChildItem $Preserve -Recurse -File | ForEach-Object {
@@ -259,9 +277,31 @@ function Copy-PackageAtomically([string]$Destination) {
         Remove-Item $Backup -Recurse -Force -ErrorAction SilentlyContinue
         return $DestFull
     } catch {
-        Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
-        if (-not (Test-Path $DestFull) -and (Test-Path $Backup)) { Move-Item $Backup $DestFull }
-        throw
+        $OriginalError = $_
+        # If anything fails after the old runtime has been moved aside,
+        # restore the model first, then the whole original installation.
+        # A failed rollback must never silently delete its backup.
+        try {
+            if ($OldRuntimeMoved -and (Test-Path $Backup -PathType Container)) {
+                if ($ModelTransferred) {
+                    $TransferredModels = Join-Path $DestFull "models"
+                    if (-not (Test-Path $TransferredModels -PathType Container)) {
+                        throw "Transferred model directory disappeared during rollback."
+                    }
+                    Move-Item -LiteralPath $TransferredModels -Destination (Join-Path $Backup "models")
+                }
+                if (Test-Path $DestFull) { Remove-Item $DestFull -Recurse -Force }
+                Move-Item -LiteralPath $Backup -Destination $DestFull
+            }
+        } catch {
+            $RollbackMessage = ("Windows upgrade failed: {0}. Rollback also failed: {1}. " +
+                "Do not delete the recovery directory {2}.") -f
+                $OriginalError.Exception.Message, $_.Exception.Message, $Backup
+            throw $RollbackMessage
+        } finally {
+            Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        throw $OriginalError
     } finally {
         Remove-Item $Preserve -Recurse -Force -ErrorAction SilentlyContinue
     }

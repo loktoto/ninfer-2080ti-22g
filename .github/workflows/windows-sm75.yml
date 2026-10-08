@@ -59,6 +59,10 @@ jobs:
           }
           Write-Host ("Validated {0} PowerShell scripts using Windows PowerShell 5.1 AST parser." -f $scripts.Count)
 
+      - name: Test model-preserving runtime upgrade and rollback
+        shell: powershell
+        run: .\\scripts\\test-windows-sm75-upgrade-model.ps1
+
   build:
     needs: powershell51-preflight
     runs-on: windows-2022
