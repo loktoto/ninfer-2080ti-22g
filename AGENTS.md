@@ -2,6 +2,16 @@
 
 These rules apply to the whole repository.
 
+## loktoto fork: active product branches
+
+This repository is maintained under **loktoto** as an Apache-2.0 derivative of NInfer by Neroued. Preserve attribution and upstream copyright notices. **The Windows SM75/Qwen3.8-27B target is an explicitly active fork product**, even though inherited upstream material below describes an RTX 5090 / `sm_120a` baseline.
+
+When a task touches `windows-native-sm75` or its staged PRs, apply the active [Windows runbook](docs/windows-sm75.md), [pinned artifact lock](config/windows-sm75-artifacts.json) and [project release gates](docs/PROJECT-STATUS.md). The SM75 product contract takes precedence over incompatible baseline-only assumptions below **within that explicit feature scope**. In particular, use CUDA 13.1 and the pinned MSVC Windows toolchain for the native packaged path, retain the Qwen3.8-only profile, and require actual GPU evidence before any production claim. Continue applying the shared numerical, safety, attribution and change-validation rules to all code.
+
+Do not rename public `ninfer` APIs, artifact formats, namespaces or model identifiers merely to change repository branding. Do not overwrite the branch-specific Windows onboarding README with outdated upstream text.
+
+---
+
 ## Governing objective
 
 Complete the user's explicit deliverable within the applicable product contract. For the declared

@@ -1,4 +1,6 @@
-# Contributing to NInfer
+# Contributing to NInfer SM75 · loktoto Edition
+
+This is the [loktoto-maintained NInfer derivative](README.md), targeting an RTX 2080 Ti 22GB Windows SM75 product alongside the inherited NInfer source baseline. Preserve upstream authorship and Apache-2.0 notices. Feature support differs by branch; verify the target branch and [release gates](docs/PROJECT-STATUS.md) before claiming a feature is available.
 
 High-quality contributions are welcome. A pull request is expected to arrive as a reasoned,
 validated implementation, not as a request for the maintainer to discover its basic correctness

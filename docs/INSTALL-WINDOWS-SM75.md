@@ -1,6 +1,8 @@
-# NInfer Qwen3.8-27B / RTX 2080 Ti 22GB — Windows 懶人安裝
+# NInfer SM75 · loktoto Edition — Windows 懶人安裝
 
-此文件對應 native Windows SM75 production package。
+由 [loktoto](https://github.com/loktoto) 維護，基於原始 [NInfer](https://github.com/Neroued/ninfer)（Apache-2.0）修改。此文件適用於**正式通過實機驗證嘅 Windows SM75 ZIP**；未有成功 RTX 2080 Ti 22GB 實機驗收前，不可將 CI build 當成 production release。
+
+[專案首頁](../README.md) · [進度及驗收規則](PROJECT-STATUS.md) · [安全指引](../SECURITY.md)
 
 ## 最簡單安裝
 

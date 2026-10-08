@@ -1,8 +1,14 @@
-# NInfer (RTX 2080 Ti 22GB / Turing SM75 Port)
+# NInfer SM75 · loktoto Edition
 
-> Selected checkpoints. Maximum single-GPU inference performance.
+**Native Windows Qwen3.8-27B for RTX 2080 Ti 22GB — a [loktoto-maintained](https://github.com/loktoto) NInfer derivative.**
 
-This repository is a specialized port of [NInfer](https://github.com/Neroued/ninfer) (originally developed by [@Neroued](https://github.com/Neroued)) optimized for NVIDIA Turing architecture (`sm_75`, tuned specifically for the **RTX 2080 Ti 22GB** modded card), while retaining compatibility with Ampere (`sm_86`) and Blackwell (`sm_120a`). It executes text and multimodal (image/video) prompts through a fast local CLI or OpenAI/Anthropic-compatible HTTP servers.
+> **繁體中文：** 我哋維護嘅 Windows 本機 AI 推理專案，針對改裝 RTX 2080 Ti 22GB、CUDA SM75、Qwen3.8-27B。重點係簡單安裝、模型驗證、MTP / Vision 同可核實嘅 GPU 效能。開發階段唔等於已經正式推出。
+
+**Release status:** This is an active development branch. **Do not treat a hosted Windows compile as a hardware-qualified release.** The first end-user ZIP must pass exact-package verification and physical RTX 2080 Ti acceptance before being advertised as production-ready. See [project status](docs/PROJECT-STATUS.md), [Windows PR #2](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) and [GitHub Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases).
+
+**Start here once a qualified ZIP exists:** extract the complete archive and run root-level `START-HERE.bat`. For installers, [Windows quick-start](docs/INSTALL-WINDOWS-SM75.md); for developers, [native build / release runbook](docs/windows-sm75.md). Normal packaged use should not require Python, PowerShell 7, Visual Studio or the CUDA Toolkit.
+
+**Credits:** This fork builds on [NInfer by Neroued](https://github.com/Neroued/ninfer) and retains its applicable Apache-2.0 license and notices. The [loktoto](https://github.com/loktoto) work here focuses on the Windows/SM75 integration, correctness, packaging and documentation—not ownership of all upstream code or model weights. See [NOTICE](NOTICE.md), [Security](SECURITY.md), [Contributing](CONTRIBUTING.md).
 
 ---
 
@@ -69,7 +75,7 @@ The historical setup was recorded as NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_7
 
 ---
 
-## Fork Features & Customizations
+## loktoto SM75 Engineering Features
 
 - **Custom W8 GEMM & Split-K Kernels**: Tailored for Turing SM75 thread-block limits and register allocation.
 - **GDN Routing Optimization**: Routes GDN gating projections to `MmaUnsplit` for token counts $T \ge 9$, resolving cooperative launch limits on Turing.
@@ -80,7 +86,7 @@ The historical setup was recorded as NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_7
 
 ## Requirements
 
-- **OS**: 64-bit Linux, WSL2, or native Windows 10/11. Native Windows instructions: [docs/windows-sm75.md](docs/windows-sm75.md).
+- **OS**: 64-bit Linux/WSL2 source build; native Windows 10/11 x64 build and package under qualification. Native Windows instructions: [docs/windows-sm75.md](docs/windows-sm75.md).
 - **GPU**: NVIDIA GPU with Turing `sm_75` (RTX 2080 Ti 22GB), Ampere `sm_86`, or Blackwell `sm_120a`.
 - **Windows release runtime**: NVIDIA driver branch R580+ and Microsoft Visual C++ 2015-2022 x64 runtime. The packaged Qwen3.8/SM75 build statically links the CUDA runtime, so end users do **not** need the CUDA Toolkit.
 - **Windows source build**: CUDA Toolkit 13.1, Visual Studio 2022 Build Tools (v143), Windows SDK, CMake >= 3.28, Ninja, Git, Windows PowerShell 5.1+ or PowerShell 7.
@@ -91,9 +97,9 @@ The historical setup was recorded as NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_7
 
 ---
 
-## Windows one-click install — RTX 2080 Ti 22GB
+## Windows one-click install — RTX 2080 Ti 22GB (after qualification)
 
-For the packaged Windows release, extract the ZIP and double-click:
+Only after the exact-SHA hardware-accepted Windows release is published, extract its ZIP and double-click:
 
 ```text
 START-HERE.bat
