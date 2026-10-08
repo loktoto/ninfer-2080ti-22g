@@ -14,7 +14,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  powershell51-preflight:
+    name: Windows PowerShell 5.1 source preflight
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Verify distributable source contract
+        shell: powershell
+        run: .\\scripts\\validate-windows-sm75-distribution-contract.ps1
+
+      - name: Parse all shipped PowerShell scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) {
+            throw "This compatibility gate requires Windows PowerShell 5.1."
+          }
+          $scriptDirs = @('install', 'scripts')
+          $scripts = @($scriptDirs | ForEach-Object {
+            Get-ChildItem -LiteralPath $_ -Filter '*.ps1' -File -Recurse
+          })
+          if ($scripts.Count -eq 0) {
+            throw 'No install/build scripts were found for compatibility validation.'
+          }
+          $failures = New-Object 'System.Collections.Generic.List[string]'
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName, [ref]$tokens, [ref]$parseErrors
+            )
+            foreach ($parseError in @($parseErrors)) {
+              $failures.Add(('{0}:{1}: {2}' -f $script.FullName,
+                $parseError.Extent.StartLineNumber, $parseError.Message))
+            }
+          }
+          if ($failures.Count -ne 0) {
+            throw ('Windows PowerShell 5.1 parsing failed:' +
+              [Environment]::NewLine + ($failures -join [Environment]::NewLine))
+          }
+          Write-Host ("Validated {0} PowerShell scripts using Windows PowerShell 5.1 AST parser." -f $scripts.Count)
+
   build:
+    needs: powershell51-preflight
     runs-on: windows-2022
     timeout-minutes: 360
     steps:
