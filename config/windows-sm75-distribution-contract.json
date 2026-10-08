@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "profile": "qwen3.8-27b-sm75",
+  "config_files": [
+    "windows-sm75-artifacts.json",
+    "production-defaults.json",
+    "windows-sm75-toolchain.json",
+    "windows-sm75-distribution-contract.json"
+  ],
+  "runtime_scripts": [
+    "run-server-windows-sm75.ps1",
+    "healthcheck-windows-sm75.ps1",
+    "smoke-test-windows-sm75.ps1",
+    "acceptance-windows-sm75.ps1",
+    "download-qwen38-windows-sm75.ps1",
+    "manage-installed-server.ps1",
+    "verify-acceptance-evidence.ps1",
+    "verify-windows-sm75.ps1"
+  ],
+  "installer_files": [
+    "START-HERE.bat",
+    "README-FIRST.txt",
+    "install-ninfer-sm75.ps1",
+    "install-ninfer-sm75.bat",
+    "first-run-wizard.ps1",
+    "verify-installation.ps1",
+    "repair-ninfer-sm75.ps1",
+    "uninstall-ninfer-sm75.ps1"
+  ],
+  "launcher_files": [
+    "Check-NInfer.bat",
+    "Configure-NInfer.bat",
+    "Open-NInfer-Logs.bat",
+    "Repair-NInfer.bat",
+    "Start-NInfer-MTP-Vision.bat",
+    "Start-NInfer-MTP.bat",
+    "Start-NInfer-Vision.bat",
+    "Start-NInfer.bat",
+    "Status-NInfer.bat",
+    "Stop-NInfer.bat",
+    "Uninstall-NInfer.bat"
+  ],
+  "docs_files": [
+    "windows-sm75.md",
+    "INSTALL-WINDOWS-SM75.md",
+    "PROJECT-STATUS.md"
+  ],
+  "installer_copy_directories": [
+    "bin",
+    "scripts",
+    "config",
+    "docs",
+    "install",
+    "launchers"
+  ],
+  "installer_root_files": [
+    "README.md",
+    "LICENSE",
+    "BUILD-MANIFEST.json",
+    "BUILD-TOOLCHAIN.json",
+    "SBOM.cdx.json",
+    "SHA256SUMS.txt",
+    "README-FIRST.txt",
+    "START-HERE.bat",
+    "NOTICE.md",
+    "SECURITY.md"
+  ],
+  "required_package_files": [
+    "bin/ninfer.exe",
+    "bin/ninfer-serve.exe",
+    "scripts/run-server-windows-sm75.ps1",
+    "scripts/healthcheck-windows-sm75.ps1",
+    "scripts/smoke-test-windows-sm75.ps1",
+    "scripts/acceptance-windows-sm75.ps1",
+    "scripts/download-qwen38-windows-sm75.ps1",
+    "scripts/manage-installed-server.ps1",
+    "scripts/verify-acceptance-evidence.ps1",
+    "scripts/verify-windows-sm75.ps1",
+    "config/windows-sm75-artifacts.json",
+    "config/production-defaults.json",
+    "config/windows-sm75-toolchain.json",
+    "config/windows-sm75-distribution-contract.json",
+    "docs/windows-sm75.md",
+    "docs/INSTALL-WINDOWS-SM75.md",
+    "install/START-HERE.bat",
+    "install/README-FIRST.txt",
+    "install/install-ninfer-sm75.ps1",
+    "install/install-ninfer-sm75.bat",
+    "install/first-run-wizard.ps1",
+    "install/verify-installation.ps1",
+    "install/repair-ninfer-sm75.ps1",
+    "install/uninstall-ninfer-sm75.ps1",
+    "launchers/Check-NInfer.bat",
+    "launchers/Configure-NInfer.bat",
+    "launchers/Open-NInfer-Logs.bat",
+    "launchers/Repair-NInfer.bat",
+    "launchers/Start-NInfer-MTP-Vision.bat",
+    "launchers/Start-NInfer-MTP.bat",
+    "launchers/Start-NInfer-Vision.bat",
+    "launchers/Start-NInfer.bat",
+    "launchers/Status-NInfer.bat",
+    "launchers/Stop-NInfer.bat",
+    "launchers/Uninstall-NInfer.bat",
+    "BUILD-MANIFEST.json",
+    "BUILD-TOOLCHAIN.json",
+    "SBOM.cdx.json",
+    "SHA256SUMS.txt",
+    "README.md",
+    "LICENSE",
+    "README-FIRST.txt",
+    "START-HERE.bat",
+    "NOTICE.md",
+    "SECURITY.md",
+    "docs/PROJECT-STATUS.md"
+  ],
+  "launcher_contracts": [
+    {
+      "file": "launchers/Start-NInfer.bat",
+      "contains": [
+        "manage-installed-server.ps1",
+        "-Action Start",
+        "-Mode Base"
+      ]
+    },
+    {
+      "file": "launchers/Start-NInfer-MTP.bat",
+      "contains": [
+        "manage-installed-server.ps1",
+        "-Action Start",
+        "-Mode Mtp"
+      ]
+    },
+    {
+      "file": "launchers/Start-NInfer-Vision.bat",
+      "contains": [
+        "manage-installed-server.ps1",
+        "-Action Start",
+        "-Mode Vision"
+      ]
+    },
+    {
+      "file": "launchers/Start-NInfer-MTP-Vision.bat",
+      "contains": [
+        "manage-installed-server.ps1",
+        "-Action Start",
+        "-Mode MtpVision"
+      ]
+    },
+    {
+      "file": "launchers/Stop-NInfer.bat",
+      "contains": [
+        "manage-installed-server.ps1",
+        "-Action Stop"
+      ]
+    },
+    {
+      "file": "launchers/Status-NInfer.bat",
+      "contains": [
+        "manage-installed-server.ps1",
+        "-Action Status"
+      ]
+    },
+    {
+      "file": "launchers/Configure-NInfer.bat",
+      "contains": [
+        "first-run-wizard.ps1"
+      ]
+    },
+    {
+      "file": "launchers/Check-NInfer.bat",
+      "contains": [
+        "verify-installation.ps1",
+        "-Full"
+      ]
+    },
+    {
+      "file": "launchers/Repair-NInfer.bat",
+      "contains": [
+        "repair-ninfer-sm75.ps1",
+        "-Restart"
+      ]
+    },
+    {
+      "file": "launchers/Uninstall-NInfer.bat",
+      "contains": [
+        "uninstall-ninfer-sm75.ps1"
+      ]
+    },
+    {
+      "file": "launchers/Open-NInfer-Logs.bat",
+      "contains": [
+        "explorer.exe",
+        "logs"
+      ]
+    },
+    {
+      "file": "install/START-HERE.bat",
+      "contains": [
+        "install-ninfer-sm75.ps1"
+      ]
+    }
+  ]
+}

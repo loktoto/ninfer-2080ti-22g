@@ -1,119 +1,285 @@
 # NInfer SM75 · loktoto Edition
 
-**Local Qwen inference for RTX 2080 Ti 22GB — maintained by [loktoto](https://github.com/loktoto).**
+**Native Windows Qwen3.8-27B for RTX 2080 Ti 22GB — a [loktoto-maintained](https://github.com/loktoto) NInfer derivative.**
 
-A community-maintained, performance-oriented [NInfer](https://github.com/Neroued/ninfer) derivative focused on making a modified **NVIDIA RTX 2080 Ti 22GB** useful for local **Qwen3.8-27B** inference on Windows. The project's priorities are reliable installation, verifiable CUDA SM75 correctness, memory efficiency, and practical OpenAI-compatible local serving.
+> **繁體中文：** 我哋維護嘅 Windows 本機 AI 推理專案，針對改裝 RTX 2080 Ti 22GB、CUDA SM75、Qwen3.8-27B。重點係簡單安裝、模型驗證、MTP / Vision 同可核實嘅 GPU 效能。開發階段唔等於已經正式推出。
 
-> **繁體中文：** 呢個係我哋維護嘅 RTX 2080 Ti 22GB / Qwen3.8-27B 本機 AI 專案。目標係 Windows 解壓即用、支援 API / MTP / Vision，並以真實 GPU 測試驗證效能。未完成硬件驗收前，唔會當佢係已推出嘅正式版。
+**Release status:** This is an active development branch. **Do not treat a hosted Windows compile as a hardware-qualified release.** The first end-user ZIP must pass exact-package verification and physical RTX 2080 Ti acceptance before being advertised as production-ready. See [project status](docs/PROJECT-STATUS.md), [Windows PR #2](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) and [GitHub Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases).
 
-[Windows development PR](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) · [SM75 KV feature PR](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) · [Project status](docs/PROJECT-STATUS.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+**Start here once a qualified ZIP exists:** extract the complete archive and run root-level `START-HERE.bat`. For installers, [Windows quick-start](docs/INSTALL-WINDOWS-SM75.md); for developers, [native build / release runbook](docs/windows-sm75.md). Normal packaged use should not require Python, PowerShell 7, Visual Studio or the CUDA Toolkit.
 
-## Release status — please read first
+**Credits:** This fork builds on [NInfer by Neroued](https://github.com/Neroued/ninfer) and retains its applicable Apache-2.0 license and notices. The [loktoto](https://github.com/loktoto) work here focuses on the Windows/SM75 integration, correctness, packaging and documentation—not ownership of all upstream code or model weights. See [NOTICE](NOTICE.md), [Security](SECURITY.md), [Contributing](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/CONTRIBUTING.md).
 
-**There is no hardware-qualified Windows production release published as of 8 October 2026.** The default `master` branch contains the source baseline; the native Windows installer, pinned Qwen3.8 artifact and release workflow are being developed on [`windows-native-sm75`](https://github.com/loktoto/ninfer-2080ti-22g/tree/windows-native-sm75).
+---
 
-| Path | Availability | What it means |
-| --- | --- | --- |
-| Linux / WSL2 source build | Source available on `master` | Developer build; CUDA and toolchain required |
-| Native Windows 10/11 x64 | [PR #2 — in development](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) | Build and installer are not yet a verified production release |
-| RK4V4E8 compressed KV cache | [PR #14 — opt-in, unmerged](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Experimental branch feature, not a default |
-| One-click Windows ZIP | [Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases) | Use only an exact-SHA, physically qualified release when available |
+## Supported Models & Artifacts
 
-Do **not** infer hardware support, model quality, 64K/128K context reliability, or tok/s from a successful hosted CI compile. [Qualification criteria](docs/PROJECT-STATUS.md) require the exact packaged binaries on a physical 22GB SM75 device.
+NInfer uses standalone `.ninfer` container artifacts embedding packed weights and tokenizer resources:
 
-## What we're building
+| Model | Weights | NInfer Artifact | Size | 22GB VRAM Residency |
+|---|---|---|---:|---|
+| [Qwen3.6-27B](https://huggingface.co/neroued/Qwen3.6-27B-NInfer) | `groupwise-int` | `qwen3_6_27b.ninfer` | 16.29 GiB | Supported (~5.5 GiB KV headroom) |
+| [Qwen3.8-27B (production-pinned v2)](https://huggingface.co/neroued/Qwen3.8-27B-NInfer/tree/3526913004b1cf552cb57b88d6a5c6f5e4a89a70) | `groupwise-int` | `qwen3_8_27b.ninfer` | 16.96 GiB | Windows SM75 production channel |
+| [Qwen3.6-35B-A3B](https://huggingface.co/neroued/Qwen3.6-35B-A3B-NInfer) | `groupwise-int` | `qwen3_6_35b_a3b.ninfer` | 21.22 GiB | General build only; excluded from Windows Qwen3.8 production profile |
 
-- **Turing-first CUDA:** work on SM75 launch bounds, GEMM, GDN, paged attention and VRAM-aware execution.
-- **27B on one modified card:** focus on Qwen3.8-27B `groupwise-int` artifacts and INT8/BF16 KV capacity planning.
-- **Useful local API:** OpenAI- and Anthropic-compatible serving, local-only defaults, tool calls and request handling.
-- **Optional MTP / Vision:** feature paths are qualified separately from a conservative Base text mode.
-- **Simple Windows setup:** extracted ZIP → `START-HERE.bat` → integrity and GPU checks → pinned model verification → local server, once released.
-- **Reproducible evidence:** exact model artifact lock, source/build provenance, SHA-256, package audit and real-card acceptance.
+*Note: For Turing (`sm_75`) and Ampere (`sm_86`) do not support `nvfp4`. Use `groupwise-int` (W8A16) artifacts.*
 
-A modded 22GB card is **not** equivalent to a stock 11GB RTX 2080 Ti. The Windows profile targets **compute capability 7.5**, **at least 20,000 MiB of detected VRAM**, and a compatible NVIDIA driver; stock cards are not supported by that one-click profile.
+> **Artifact compatibility:** do not use an unpinned `latest` Qwen3.8 artifact with this branch. The Windows SM75 production channel is locked by `config/windows-sm75-artifacts.json` to NInfer container **v2**, revision `3526913004b1cf552cb57b88d6a5c6f5e4a89a70`, SHA-256 `eec39564993d6e9c7d5e383382a760f093465c9d163ec9a1bd6b80199514bf3e`. Use `scripts/download-qwen38-windows-sm75.ps1` to download and verify it. Artifact v3 is a separate upstream format migration and is rejected explicitly by this branch.
 
-## Getting started
+---
 
-### 1. Windows users — intended end-user path
+## VRAM & Context Sizing (22GB Target)
 
-**Not yet released.** When a qualified ZIP appears on the [Releases page](https://github.com/loktoto/ninfer-2080ti-22g/releases):
+On an RTX 2080 Ti 22GB (~22,528 MiB addressable), available device memory is allocated between model weights, speculative draft structures, CUDA runtime workspaces, and the paged KV cache pool.
 
-1. Download the matching Windows ZIP and its `.sha256` checksum.
-2. Verify the ZIP checksum and extract **the complete archive**.
-3. Double-click `START-HERE.bat` inside the extracted package.
-4. Let the installer check the GPU, package and runtime prerequisites, and download/verify the exact pinned model.
-5. Start with `launchers\Start-NInfer.bat`. Enable MTP or Vision only after Base works.
+### 1. KV Cache Quantization: `--kv-dtype int8` (Recommended)
+- **INT8 Group-64 (`--kv-dtype int8`)**: Consumes **~33.8 KiB per token** (~33 MiB per 1,000 context tokens on 27B), halving KV memory footprint relative to BF16.
+- **BF16 (`--kv-dtype bf16`)**: Consumes **64.0 KiB per token** (64 MiB per 1,000 context tokens on 27B).
 
-The planned native Windows runtime does **not** require Python, PowerShell 7, Visual Studio or a CUDA Toolkit on the end-user computer. Developer builds do need a pinned toolchain.
+### 2. Context Limits & Concurrency
 
-[Detailed Windows installation guide (development branch)](https://github.com/loktoto/ninfer-2080ti-22g/blob/windows-native-sm75/docs/INSTALL-WINDOWS-SM75.md) · [Native build/release runbook](https://github.com/loktoto/ninfer-2080ti-22g/blob/windows-native-sm75/docs/windows-sm75.md)
+| Model | Weight Footprint | KV Pool Headroom | Max Context (`--kv-dtype int8`) | Concurrency (`--max-concurrency`) |
+|---|:---:|:---:|:---:|:---:|
+| **Qwen3.6-27B** | ~16.29 GiB | ~5.0 – 5.5 GiB | Up to 131,072 (128K) | 1 – 4 active requests |
+| **Qwen3.8-27B pinned v2** | ~16.96 GiB | hardware-dependent | 8K baseline; 32K/64K acceptance targets; 128K experimental | 1 production baseline |
+| **Qwen3.6-35B-A3B** | ~21.22 GiB | ~0.7 – 0.9 GiB | 4,096 – 8,192 (4K–8K) | 1 active request |
 
-### 2. Linux / WSL2 — build from source
+### 3. Execution Configuration Notes
+- **Qwen3.8-27B / Windows SM75**: start with `--kv-dtype int8 --kv-capacity auto --max-context 16384 --max-concurrency 1`. Promote 32K and 64K only after `scripts/acceptance-windows-sm75.ps1` succeeds on the exact 22GB card and packaged build. Treat 128K as experimental until a representative long-context run succeeds without OOM or numerical failure.
+- **35B-A3B Deployments**: available only in the general build. The native Windows SM75 production script enables `NINFER_QWEN38_ONLY=ON` and intentionally does not register the 35B target.
 
-This is a **developer path**, not the one-click Windows product.
+---
+
+## Historical SM75 Tuning Reference (Not Native-Windows Release Evidence)
+
+The figures below are retained from prior RTX 2080 Ti / SM75 tuning work for regression context. They are **not** produced by the current native-Windows CI (GitHub runners have no Turing GPU) and are not a release SLA. Native-Windows performance becomes release evidence only after the packaged binary passes `scripts/acceptance-windows-sm75.ps1` on the physical 22GB card and the resulting evidence JSON is retained.
+
+The historical setup was recorded as NVIDIA GeForce RTX 2080 Ti (`TU102` / `sm_75`, 22 GB VRAM mod, CUDA 12.9) with **Qwen3.8-27B** (`groupwise-int`, INT8 group-64 KV cache, greedy generation, $T_{\text{new}} = 256$ tokens):
+
+### Speculative Decoding (MTP0 vs MTP3)
+
+| Benchmark Metric | Baseline (MTP0, Autoregressive) | Speculative MTP3 (Draft Window = 3) | Performance Delta |
+|---|:---:|:---:|:---:|
+| **Committed Decode Throughput** | **24.58 – 24.88 tok/s** | **41.92 – 44.64 tok/s** | **1.71× – 1.79× (+79.4%)** |
+| **Decode Latency (256 tokens)** | 10.25 s (40.68 ms/tok) | **5.71 s (23.85 ms/tok)** | **−44.3% latency** |
+| **MTP Acceptance Rate** | N/A | **60.74% – 65.37%** | 164–168 / 257–270 tokens |
+| **Effective Draft Length** | 1.00 tok/round | **2.82 – 2.95 tok/round** | ~2.9× step efficiency |
+| **Accepted by Position** | N/A | Pos 1: ~73, Pos 2: ~55, Pos 3: ~40 | Monotonic acceptance decay |
+| **VRAM Allocation** | 16.51 GiB | 17.47 GiB | ~2.9 GiB free headroom |
+| **Numerical Parity** | Reference | Exact token-for-token parity | 0 token divergence vs MTP0 |
+
+### Prefill Throughput
+- **Short Prompt ($T = 22$ tokens):** ~71 – 78 tok/s
+- **Medium Prompt ($T = 62$ tokens):** ~134 – 135 tok/s
+- **Long Prefill ($T \ge 1024$ – $2048$ tokens):** Routed via GDN `MmaUnsplit` to operate within Turing SM75 shared-memory and cooperative CTA launch limits (1 CTA / SM, 40 KiB smem).
+
+---
+
+## loktoto SM75 Engineering Features
+
+- **Custom W8 GEMM & Split-K Kernels**: Tailored for Turing SM75 thread-block limits and register allocation.
+- **GDN Routing Optimization**: Routes GDN gating projections to `MmaUnsplit` for token counts $T \ge 9$, resolving cooperative launch limits on Turing.
+- **22GB VRAM Memory Tuning**: Startup sizing headroom and paged INT8/BF16 KV allocation profiles calibrated for 22GB capacity.
+- **Reasoning Effort Control**: Configurable thinking depth via `--reasoning-effort none|minimal|low|medium|high|xhigh` (`none` disables thinking; `minimal`/`low` concise reasoning; `medium`/`high`/`xhigh` comprehensive reasoning).
+
+---
+
+## Requirements
+
+- **OS**: 64-bit Linux/WSL2 source build; native Windows 10/11 x64 build and package under qualification. Native Windows instructions: [docs/windows-sm75.md](docs/windows-sm75.md).
+- **GPU**: NVIDIA GPU with Turing `sm_75` (RTX 2080 Ti 22GB), Ampere `sm_86`, or Blackwell `sm_120a`.
+- **Windows release runtime**: NVIDIA driver branch R580+ and Microsoft Visual C++ 2015-2022 x64 runtime. The packaged Qwen3.8/SM75 build statically links the CUDA runtime, so end users do **not** need the CUDA Toolkit.
+- **Windows source build**: CUDA Toolkit 13.1, Visual Studio 2022 Build Tools (v143), Windows SDK, CMake >= 3.28, Ninja, Git, Windows PowerShell 5.1+ or PowerShell 7.
+- **Linux / WSL2 build tools**: CMake >= 3.28, Ninja, GCC >= 11 or Clang >= 14, `pkg-config`.
+- **System Libraries**:
+  - FFmpeg development libraries (`libavformat >= 60`, `libavcodec >= 60`, `libavutil >= 58`, `libswscale >= 7`)
+  - `libcurl >= 7.85`
+
+---
+
+## Windows one-click install — RTX 2080 Ti 22GB (after qualification)
+
+Only after the exact-SHA hardware-accepted Windows release is published, extract its ZIP and double-click:
+
+```text
+START-HERE.bat
+```
+
+The installer validates the package checksums and product manifest, requires RTX 2080 Ti / CC 7.5 / 20GB+ VRAM / R580+ NVIDIA driver, installs the VC++ runtime if needed, downloads the exact pinned Qwen3.8 artifact with resume support, verifies its SHA-256 and v2 container header, creates a local API key and shortcuts, starts the conservative Base server, then checks `/health` and `/v1/models`.
+
+Default paths on systems with a `D:` drive:
+
+```text
+Runtime  D:\AI\NInfer-SM75
+Model    D:\AI\models\qwen\qwen3_8_27b.ninfer
+API      http://127.0.0.1:8080/v1
+```
+
+See [docs/INSTALL-WINDOWS-SM75.md](docs/INSTALL-WINDOWS-SM75.md) for install, repair, uninstall, MTP/Vision launchers, DeepSeek Harness/Hermes endpoint details, and full physical-card acceptance.
+
+---
+
+## Build
+
+### Native Windows / RTX 2080 Ti (SM75)
+
+Use Visual Studio 2022 and the production Windows branch:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-windows-sm75.ps1 -Clean
+.\scripts\verify-windows-sm75.ps1
+.\scripts\package-windows-sm75.ps1
+.\scripts\verify-package-windows-sm75.ps1
+
+# Full physical-card gate: 8K/32K/64K NIAH, tool calls, and MTP token-ID parity.
+.\scripts\acceptance-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
+
+# Download + SHA-256 + v2-container verification (works with Windows PowerShell 5.1).
+.\scripts\download-qwen38-windows-sm75.ps1 -ModelDir "D:\AI\models\qwen"
+```
+
+The build is pinned to a tested vcpkg revision, enables the **Qwen3.8-27B-only SM75 production profile**, stages a self-contained application directory under `out\windows-sm75`, verifies that both executables start with their packaged DLLs, and emits a checksummed ZIP in `dist\`. The profile removes the 35B target registration and avoids instantiating its heaviest BF16 GDN CUDA templates, which are irrelevant to this product build.
+
+For a conservative Qwen3.8-27B server baseline:
+
+```powershell
+$env:NINFER_API_KEY = "replace-with-a-local-secret"
+.\scripts\run-server-windows-sm75.ps1 -Model "D:\AI\models\qwen\qwen3_8_27b.ninfer"
+.\scripts\healthcheck-windows-sm75.ps1
+```
+
+See [docs/windows-sm75.md](docs/windows-sm75.md) for the supported toolchain, packaging contract,
+security defaults, and the RTX 2080 Ti hardware acceptance sequence.
+
+Production releases require a successful **self-hosted RTX 2080 Ti acceptance workflow run ID** for the exact release commit. A human checkbox is not accepted as hardware evidence; the release workflow re-verifies the evidence JSON and generates GitHub build-provenance attestations.
+
+### Linux / WSL2
 
 ```bash
 git clone https://github.com/loktoto/ninfer-2080ti-22g.git
 cd ninfer-2080ti-22g
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_ARCHITECTURES=75
-cmake --build build -j
+
+# Build for Turing sm_75 (default)
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=75
+cmake --build build --parallel
 ```
 
-You need a compatible NVIDIA CUDA toolchain, CMake 3.28+, Ninja, a C++20 compiler, and FFmpeg/libcurl development dependencies. Check the target and flags against the current source tree before building. Do not assume the Windows v2-only artifact lock applies automatically to other branches.
+*(For Ampere or Blackwell, set `-DCMAKE_CUDA_ARCHITECTURES=86` or `-DCMAKE_CUDA_ARCHITECTURES=120a`.)*
 
-### 3. Local API integration
+Targets:
+- `build/apps/ninfer`: CLI inference runner.
+- `build/apps/ninfer-serve`: OpenAI & Anthropic HTTP server.
 
-On the planned Windows package, Base mode binds to **`127.0.0.1:8080`** by default and generates a local API key in the installed application's protected secrets directory.
+---
 
-```text
-OpenAI-compatible base URL: http://127.0.0.1:8080/v1
-Health endpoint:           http://127.0.0.1:8080/health
-Model discovery:           http://127.0.0.1:8080/v1/models
+## Model Download
+
+The Windows one-click installer downloads the pinned Qwen3.8 artifact directly with Windows `curl.exe`, supports resume, and verifies SHA-256. The Hugging Face CLI remains an optional manual/developer path for registered artifacts:
+
+```bash
+pip install huggingface-hub
+
+# Qwen3.6-27B (groupwise-int)
+hf download neroued/Qwen3.6-27B-NInfer qwen3_6_27b.ninfer --local-dir models
+
+# Qwen3.8-27B production artifact for this SM75 branch: NEVER float latest.
+hf download neroued/Qwen3.8-27B-NInfer qwen3_8_27b.ninfer \
+  --revision 3526913004b1cf552cb57b88d6a5c6f5e4a89a70 \
+  --local-dir models
+
+# Qwen3.6-35B-A3B (groupwise-int)
+hf download neroued/Qwen3.6-35B-A3B-NInfer qwen3_6_35b_a3b.ninfer --local-dir models
 ```
 
-For Hermes, DeepSeek Harness and other OpenAI-compatible clients, use the actual model identifier returned by `/v1/models`, not a guessed alias. Keep the API key out of committed settings. The built-in listener uses plain HTTP: **never expose it directly to the public Internet**. See [Security](SECURITY.md) and [Serving](docs/serving.md).
+---
 
-## Model and artifact policy
+## CLI Usage
 
-The Windows development channel pins **Qwen3.8-27B, groupwise-int**, to one explicit NInfer **container-v2** model:
+### Text Generation
+```bash
+./build/apps/ninfer models/qwen3_8_27b.ninfer \
+  --prompt "Explain virtual memory in three sentences." \
+  --max-context 8192 \
+  --max-new 256 \
+  --kv-dtype int8 \
+  --spec mtp --draft-tokens 3 --lm-head-draft
+```
 
-| Field | Windows development contract |
-| --- | --- |
-| Model repository | [neroued/Qwen3.8-27B-NInfer](https://huggingface.co/neroued/Qwen3.8-27B-NInfer) |
-| Exact revision | `3526913004b1cf552cb57b88d6a5c6f5e4a89a70` |
-| File | `qwen3_8_27b.ninfer` |
-| Size | `18,210,531,328` bytes |
-| SHA-256 | `eec39564993d6e9c7d5e383382a760f093465c9d163ec9a1bd6b80199514bf3e` |
+### Multimodal Input (Vision)
+```bash
+./build/apps/ninfer models/qwen3_8_27b.ninfer \
+  --messages examples/cli/messages/image_chart.json \
+  --max-context 8192 \
+  --max-new 256 \
+  --vision \
+  --kv-dtype int8
+```
 
-These values come from the tracked [Windows artifact lock](https://github.com/loktoto/ninfer-2080ti-22g/blob/windows-native-sm75/config/windows-sm75-artifacts.json). Do **not** substitute the upstream “latest” artifact: newer container formats may not be compatible with this pinned Windows path. **Model files are downloaded separately** and are not included in the installer ZIP.
+---
 
-## Engineering and verification
+## Server Usage
 
-| Gate | Required evidence |
-| --- | --- |
-| Source / CI | SM75 build, host-safe contracts and resource/compatibility checks |
-| Windows distributable | Windows x64 build, package/DLL checks, PowerShell 5.1 installer checks, ZIP integrity and SBOM |
-| Actual GPU | RTX 2080 Ti 22GB, pinned model, 8K smoke test, semantic 8K/32K/64K retrieval, tool calls and MTP parity |
-| Public production release | Exact release SHA **and** the actual hardware-qualified ZIP, with machine-verifiable evidence |
+Start the HTTP server:
 
-The 8K/32K/64K figures are **test targets**, not published service-level guarantees. **128K remains experimental.** Earlier tuning measurements must not be represented as validated performance of the native Windows package. See [Project status](docs/PROJECT-STATUS.md) for the live PR/workflow links and release criteria.
+```bash
+./build/apps/ninfer-serve models/qwen3_8_27b.ninfer \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --max-context 16384 \
+  --kv-dtype int8 \
+  --kv-capacity auto \
+  --max-concurrency 2 \
+  --spec mtp --draft-tokens 3 --lm-head-draft
+```
+
+### Request Example
+```bash
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3.8-27b",
+    "messages": [
+      {"role": "system", "content": "You are a precise technical assistant."},
+      {"role": "user", "content": "What is the difference between paging and segmentation?"}
+    ],
+    "max_tokens": 256,
+    "temperature": 0.6
+  }'
+```
+
+---
+
+## Capabilities & Architecture
+
+- **Batched Decode**: Small-scale concurrent request scheduling with round-boundary compaction and CUDA Graph replay.
+- **Speculative Decoding**: Multi-Token Prediction (MTP) with draft windows (1–5 tokens) and optimized draft heads; DFlash support on 35B-A3B.
+- **Memory Management**: Paged INT8 (group-64) and BF16 KV cache with automatic VRAM capacity detection and prefix reuse.
+- **Native Vision**: Image and video token encoding with frozen request-transient allocations.
+- **Compiled Chat Frontend**: In-engine chat template rendering avoiding Python/Jinja runtime overhead.
+
+---
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Project status and release gates](docs/PROJECT-STATUS.md)
-- [CLI guide](docs/cli.md) and [Serving/API guide](docs/serving.md)
-- [Tests](tests/README.md) and [Benchmarks](bench/README.md)
-- [Windows user guide on the feature branch](https://github.com/loktoto/ninfer-2080ti-22g/blob/windows-native-sm75/docs/INSTALL-WINDOWS-SM75.md)
-- [Security and responsible disclosure](SECURITY.md)
-- [Contributor guide](CONTRIBUTING.md)
+- [Windows SM75 One-click Install](docs/INSTALL-WINDOWS-SM75.md)
+- [Native Windows SM75 Build/Release](docs/windows-sm75.md)
+- [CLI Usage Guide](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/cli.md)
+- [HTTP Serving Protocol](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/serving.md)
+- [Paged KV Cache Architecture](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/maintainer/paged-kv-cache.md)
+- [Concurrent Inference Engine](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/maintainer/concurrent-inference-architecture.md)
+- [CLI Input Examples](https://github.com/loktoto/ninfer-2080ti-22g/tree/master/examples/cli/)
 
-## Maintainers, upstream credit and licensing
+---
 
-**This repository and its SM75/Windows integration work are maintained under [loktoto](https://github.com/loktoto).** It is a derivative of **[NInfer by Neroued](https://github.com/Neroued/ninfer)**, not the upstream project's official Windows release and not a claim of authorship over upstream source code.
+## Acknowledgements & Upstream Project
 
-We preserve existing [Apache License 2.0](LICENSE) terms, applicable original notices and attribution. [NOTICE](NOTICE.md) records the project relationship. Models and checkpoints remain the work of their respective creators and are subject to their own license terms. Modifications here are maintained by this fork's contributors.
+- **Original Project:** [NInfer](https://github.com/Neroued/ninfer) by [@Neroued](https://github.com/Neroued).
+- **Original Checkpoint Artifacts:** [neroued on Hugging Face](https://huggingface.co/neroued).
 
-**Project contact:** use [GitHub Issues](https://github.com/loktoto/ninfer-2080ti-22g/issues) for reproducible bugs and [Pull Requests](https://github.com/loktoto/ninfer-2080ti-22g/pulls) for code changes; use the [security policy](SECURITY.md) for vulnerabilities.
+---
+
+## License
+
+NInfer is licensed under the [Apache License 2.0](LICENSE).
+Model weights are subject to their respective upstream licenses ([Qwen License](https://huggingface.co/Qwen)).

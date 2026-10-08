@@ -88,6 +88,7 @@ std::string serve_usage_text(const char* argv0) {
            "       --media-live-mib defaults to 2048 and bounds all live BF16 patch payloads\n"
            "       --media-preprocess-threads defaults to 0 (auto, at most 16 workers)\n"
            "       --request-log-jsonl appends full-precision server/request records\n"
+           "       NINFER_API_KEY supplies the API key when --api-key is omitted\n"
            "       --model-id overrides the artifact identity.model_id reported by the server\n"
            "       Responses state is process-local and bounded to 1024 records / 256 MiB by "
            "default\n"
@@ -273,6 +274,16 @@ ServeOptions parse_serve_options(int argc, char** argv) {
             throw std::invalid_argument("unknown argument: " + arg);
         }
     }
+    // Prefer an explicit command-line key for backwards compatibility, otherwise
+    // read the secret from the process environment so production launchers do not
+    // expose credentials in the Windows process command line.
+    if (options.api_key.empty()) {
+        if (const char* env_api_key = std::getenv("NINFER_API_KEY");
+            env_api_key != nullptr && *env_api_key != '\0') {
+            options.api_key = env_api_key;
+        }
+    }
+
     if (!kv_capacity_explicit) {
         options.kv_capacity = KvCapacityPolicy::explicit_capacity(options.max_context);
     }

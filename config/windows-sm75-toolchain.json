@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "profile": "qwen3.8-27b-sm75",
+  "msvc_toolset": "14.44.35207",
+  "msvc_compiler": "19.44.35229",
+  "windows_sdk": "10.0.26100.0",
+  "cuda_compiler": "13.1.80",
+  "cmake": "3.31.6",
+  "ninja": "1.13.2",
+  "vcpkg_commit": "b3ae22aef2b857af6e80d756c13f15db12be4e8a"
+}
