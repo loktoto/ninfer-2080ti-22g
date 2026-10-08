@@ -42,7 +42,8 @@
   ],
   "docs_files": [
     "windows-sm75.md",
-    "INSTALL-WINDOWS-SM75.md"
+    "INSTALL-WINDOWS-SM75.md",
+    "PROJECT-STATUS.md"
   ],
   "installer_copy_directories": [
     "bin",
@@ -60,7 +61,9 @@
     "SBOM.cdx.json",
     "SHA256SUMS.txt",
     "README-FIRST.txt",
-    "START-HERE.bat"
+    "START-HERE.bat",
+    "NOTICE.md",
+    "SECURITY.md"
   ],
   "required_package_files": [
     "bin/ninfer.exe",
@@ -105,7 +108,10 @@
     "README.md",
     "LICENSE",
     "README-FIRST.txt",
-    "START-HERE.bat"
+    "START-HERE.bat",
+    "NOTICE.md",
+    "SECURITY.md",
+    "docs/PROJECT-STATUS.md"
   ],
   "launcher_contracts": [
     {

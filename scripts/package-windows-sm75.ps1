@@ -49,8 +49,11 @@ Copy-Item $InstallPath $StagePath -Recurse -Force
 
 $DocsDir = Join-Path $StagePath "docs"
 New-Item -ItemType Directory -Force -Path $DocsDir | Out-Null
-Copy-Item (Join-Path $RepoRoot "README.md") (Join-Path $StagePath "README.md") -Force
-Copy-Item (Join-Path $RepoRoot "LICENSE") (Join-Path $StagePath "LICENSE") -Force
+# Keep project identity, source attribution and security documentation
+# available from the extracted offline Windows installer package.
+foreach ($RootFile in @("README.md", "LICENSE", "NOTICE.md", "SECURITY.md")) {
+    Copy-Item (Join-Path $RepoRoot $RootFile) (Join-Path $StagePath $RootFile) -Force
+}
 foreach ($Name in @($DistributionContract.docs_files)) {
     $Name = [string]$Name
     Copy-Item (Join-Path $RepoRoot "docs\$Name") (Join-Path $DocsDir $Name) -Force
