@@ -24,7 +24,7 @@ jobs:
 
       - name: Verify distributable source contract
         shell: powershell
-        run: .\\scripts\\validate-windows-sm75-distribution-contract.ps1
+        run: .\scripts\validate-windows-sm75-distribution-contract.ps1
 
       - name: Parse all shipped PowerShell scripts with Windows PowerShell 5.1
         shell: powershell
@@ -48,7 +48,7 @@ jobs:
             [void][System.Management.Automation.Language.Parser]::ParseFile(
               $script.FullName, [ref]$tokens, [ref]$parseErrors
             )
-            foreach ($parseError in @($parseErrors)) {
+            foreach ($parseError in $parseErrors) {
               $failures.Add(('{0}:{1}: {2}' -f $script.FullName,
                 $parseError.Extent.StartLineNumber, $parseError.Message))
             }
