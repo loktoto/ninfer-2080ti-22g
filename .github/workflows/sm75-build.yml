@@ -44,7 +44,7 @@ jobs:
       - name: Build SM75 runtime surface
         shell: bash
         run: |
-          cmake --build build --parallel 2 --target \
+          cmake --build build --parallel 1 --target \
             ninfer \
             ninfer-serve \
             ninfer_kv_capacity_test \
