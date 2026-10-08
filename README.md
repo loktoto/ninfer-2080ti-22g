@@ -8,7 +8,7 @@
 
 **Start here once a qualified ZIP exists:** extract the complete archive and run root-level `START-HERE.bat`. For installers, [Windows quick-start](docs/INSTALL-WINDOWS-SM75.md); for developers, [native build / release runbook](docs/windows-sm75.md). Normal packaged use should not require Python, PowerShell 7, Visual Studio or the CUDA Toolkit.
 
-**Credits:** This fork builds on [NInfer by Neroued](https://github.com/Neroued/ninfer) and retains its applicable Apache-2.0 license and notices. The [loktoto](https://github.com/loktoto) work here focuses on the Windows/SM75 integration, correctness, packaging and documentation—not ownership of all upstream code or model weights. See [NOTICE](NOTICE.md), [Security](SECURITY.md), [Contributing](CONTRIBUTING.md).
+**Credits:** This fork builds on [NInfer by Neroued](https://github.com/Neroued/ninfer) and retains its applicable Apache-2.0 license and notices. The [loktoto](https://github.com/loktoto) work here focuses on the Windows/SM75 integration, correctness, packaging and documentation—not ownership of all upstream code or model weights. See [NOTICE](NOTICE.md), [Security](SECURITY.md), [Contributing](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/CONTRIBUTING.md).
 
 ---
 
@@ -264,11 +264,11 @@ curl http://127.0.0.1:8080/v1/chat/completions \
 
 - [Windows SM75 One-click Install](docs/INSTALL-WINDOWS-SM75.md)
 - [Native Windows SM75 Build/Release](docs/windows-sm75.md)
-- [CLI Usage Guide](docs/cli.md)
-- [HTTP Serving Protocol](docs/serving.md)
-- [Paged KV Cache Architecture](docs/maintainer/paged-kv-cache.md)
-- [Concurrent Inference Engine](docs/maintainer/concurrent-inference-architecture.md)
-- [CLI Input Examples](examples/cli/)
+- [CLI Usage Guide](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/cli.md)
+- [HTTP Serving Protocol](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/serving.md)
+- [Paged KV Cache Architecture](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/maintainer/paged-kv-cache.md)
+- [Concurrent Inference Engine](https://github.com/loktoto/ninfer-2080ti-22g/blob/master/docs/maintainer/concurrent-inference-architecture.md)
+- [CLI Input Examples](https://github.com/loktoto/ninfer-2080ti-22g/tree/master/examples/cli/)
 
 ---
 
