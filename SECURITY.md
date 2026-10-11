@@ -4,11 +4,11 @@ Maintained by [loktoto](https://github.com/loktoto). This is an independently ma
 
 ## Supported versions
 
-The Windows SM75 product is **under development** and has no hardware-qualified production release as of **2026-10-08**. No currently published production-version support window is claimed.
+The Windows SM75 product is **under development** and has no hardware-qualified production release as of **2026-10-11**. No currently published production-version support window is claimed.
 
 ## Report a vulnerability
 
-**Do not publish working exploits, user API keys or private tokens in a public issue.** If GitHub's private vulnerability reporting is enabled for this repository, use the repository's **Security → Report a vulnerability** flow. Otherwise, report minimal non-sensitive details in an issue asking the maintainer to establish a private disclosure channel first.
+**Do not publish working exploits, user API keys or private tokens in a public issue.** If GitHub's private vulnerability reporting is enabled for this repository, use **Security → Report a vulnerability**. **GitHub Issues is currently disabled**; do not try to submit exploit details in a public pull request. If the private reporting button is absent, refrain from sharing sensitive reproduction details publicly until the maintainer enables a private disclosure channel.
 
 Provide the affected commit, OS, GPU, reproduction environment, expected/actual security behavior and a sanitized reproducer. Never attach real model credentials or another user's private logs.
 
