@@ -361,3 +361,9 @@ for that exact binary before publishing the ZIP, checksum, SBOM and hardware evi
 
 Compile-only CI can never auto-publish a production release, and a different rebuild cannot be
 substituted for the hardware-qualified bytes.
+
+### Windows CUDA link-mode qualification
+
+Windows hosted CI uses `-WholeProgramCuda` to explicitly opt into the `NINFER_CUDA_WHOLE_PROGRAM=ON` (non-relocatable device code) configuration. Historical RDC-mode Windows runs on 2026-10-08 reached Ninja `[382/390]` but stalled during the final linking tail until the six-hour workflow limit; the opt-in trial tests whether avoiding redundant static-library device resolution removes this bottleneck. The existing Linux SM75 whole-program build passed, but a Windows release remains **unqualified until its own native build, packaging, and physical RTX 2080 Ti 22GB GPU acceptance succeed**. No Windows speedup is claimed before that evidence.
+
+Local source builds retain the default RDC path unless `-WholeProgramCuda` is supplied. Both the hosted package workflow and the exact-SHA self-hosted GPU-acceptance workflow request the same non-RDC mode; the release workflow publishes only the physically qualified ZIP. If whole-program compilation fails, fix the relevant device-link dependency rather than silently publishing an untested fallback.

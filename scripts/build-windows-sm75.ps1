@@ -10,6 +10,7 @@ param(
     [int]$BuildJobs = 2,
     [switch]$BuildW8Regression,
     [switch]$RunW8Regression,
+    [switch]$WholeProgramCuda,
     [switch]$SkipDependencies,
     [switch]$Clean
 )
@@ -144,12 +145,13 @@ $CmakeArgs = @(
     "-DVCPKG_TARGET_TRIPLET=x64-windows",
     "-DNINFER_BUILD_APPS=ON",
     "-DNINFER_QWEN38_ONLY=ON",
+    "-DNINFER_CUDA_WHOLE_PROGRAM=$($WholeProgramCuda.IsPresent.ToString().ToUpperInvariant())",
     "-DNINFER_BUILD_SM75_W8_REGRESSION=$($BuildW8Regression.IsPresent.ToString().ToUpperInvariant())",
     "-DBUILD_TESTING=OFF",
     "-DNINFER_BUILD_BENCHMARKS=OFF"
 )
 
-Write-Host "Configuring native SM75 build ..."
+Write-Host ("Configuring native SM75 build: CUDA device-code mode = {0}" -f $(if ($WholeProgramCuda) { "whole-program (non-RDC)" } else { "relocatable (RDC)" }))
 Invoke-Checked { cmake.exe @CmakeArgs } "CMake configure"
 
 $BuildTargets = @("ninfer","ninfer-serve")

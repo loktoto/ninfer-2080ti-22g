@@ -108,7 +108,7 @@ jobs:
 
       - name: Build and stage native SM75 runtime
         shell: pwsh
-        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2 -BuildW8Regression
+        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2 -BuildW8Regression -WholeProgramCuda
 
       - name: Verify packaged binaries start
         shell: pwsh

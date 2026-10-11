@@ -52,7 +52,7 @@ jobs:
           if ($jobs -lt 1 -or $jobs -gt 2) {
             throw "Qualified SM75 builds are limited to 1-2 parallel compile jobs."
           }
-          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs -RunW8Regression
+          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs -RunW8Regression -WholeProgramCuda
 
       - name: Verify and package runtime
         shell: powershell
