@@ -1,7 +1,9 @@
 #include "serve/serve_options.h"
+#include "serve/http_server.h"
 #include "serve/translate.h"
 
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -104,6 +106,15 @@ int main() {
         (void)parse({"ninfer-serve", "model.ninfer", "--max-pending-requests", "0"});
     } catch (const std::invalid_argument&) { zero_queue_rejected = true; }
     failures += check(zero_queue_rejected, "zero pending queue was accepted");
+
+    bool direct_server_queue_rejected = false;
+    try {
+        ServeOptions excessive = defaults;
+        excessive.max_pending_requests = kMaximumPendingRequests + 1;
+        HttpServer unsafe(std::move(excessive));
+    } catch (const std::invalid_argument&) { direct_server_queue_rejected = true; }
+    failures += check(direct_server_queue_rejected,
+                      "direct HTTP server accepted an unbounded worker queue");
 
     bool empty_model_id_rejected = false;
     try {
