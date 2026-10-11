@@ -6,17 +6,17 @@ A community-maintained, performance-oriented [NInfer](https://github.com/Neroued
 
 > **繁體中文：** 呢個係我哋維護嘅 RTX 2080 Ti 22GB / Qwen3.8-27B 本機 AI 專案。目標係 Windows 解壓即用、支援 API / MTP / Vision，並以真實 GPU 測試驗證效能。未完成硬件驗收前，唔會當佢係已推出嘅正式版。
 
-[Windows development PR](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) · [SM75 KV feature PR](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) · [Project status](docs/PROJECT-STATUS.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+[Windows development PR](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) · [RK4V4E8 opt-in (merged)](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) · [Project status](docs/PROJECT-STATUS.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ## Release status — please read first
 
-**There is no hardware-qualified Windows production release published as of 8 October 2026.** The default `master` branch contains the source baseline; the native Windows installer, pinned Qwen3.8 artifact and release workflow are being developed on [`windows-native-sm75`](https://github.com/loktoto/ninfer-2080ti-22g/tree/windows-native-sm75).
+**There is no hardware-qualified Windows production release published as of 11 October 2026 (releases API checked).** The default `master` branch contains the source baseline; the native Windows installer, pinned Qwen3.8 artifact and release workflow are being developed on [`windows-native-sm75`](https://github.com/loktoto/ninfer-2080ti-22g/tree/windows-native-sm75).
 
 | Path | Availability | What it means |
 | --- | --- | --- |
 | Linux / WSL2 source build | Source available on `master` | Developer build; CUDA and toolchain required |
 | Native Windows 10/11 x64 | [PR #2 — in development](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) | Build and installer are not yet a verified production release |
-| RK4V4E8 compressed KV cache | [PR #14 — opt-in, unmerged](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Experimental branch feature, not a default |
+| RK4V4E8 compressed KV cache | [PR #14 — merged into `master`](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Opt-in source feature; **not** physically qualified for Windows release |
 | One-click Windows ZIP | [Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases) | Use only an exact-SHA, physically qualified release when available |
 
 Do **not** infer hardware support, model quality, 64K/128K context reliability, or tok/s from a successful hosted CI compile. [Qualification criteria](docs/PROJECT-STATUS.md) require the exact packaged binaries on a physical 22GB SM75 device.
@@ -116,4 +116,4 @@ The 8K/32K/64K figures are **test targets**, not published service-level guarant
 
 We preserve existing [Apache License 2.0](LICENSE) terms, applicable original notices and attribution. [NOTICE](NOTICE.md) records the project relationship. Models and checkpoints remain the work of their respective creators and are subject to their own license terms. Modifications here are maintained by this fork's contributors.
 
-**Project contact:** use [GitHub Issues](https://github.com/loktoto/ninfer-2080ti-22g/issues) for reproducible bugs and [Pull Requests](https://github.com/loktoto/ninfer-2080ti-22g/pulls) for code changes; use the [security policy](SECURITY.md) for vulnerabilities.
+**Project contact:** GitHub Issues is currently **disabled** for this repository. Use [Pull Requests](https://github.com/loktoto/ninfer-2080ti-22g/pulls) for reproducible, non-sensitive fixes and development discussion. For vulnerabilities, follow the [security policy](SECURITY.md) and **never disclose exploit details in a public PR**.
