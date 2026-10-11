@@ -87,6 +87,24 @@ int main() {
     failures += check(overflow_pending_rejected,
                       "strtol overflow was accepted for --max-pending-requests");
 
+    const ServeOptions max_queue = parse(
+        {"ninfer-serve", "model.ninfer", "--max-pending-requests", "128"});
+    failures += check(max_queue.max_pending_requests == kMaximumPendingRequests,
+                      "maximum permitted pending queue was rejected");
+
+    bool oversized_queue_rejected = false;
+    try {
+        (void)parse({"ninfer-serve", "model.ninfer", "--max-pending-requests", "129"});
+    } catch (const std::invalid_argument&) { oversized_queue_rejected = true; }
+    failures += check(oversized_queue_rejected,
+                      "excessive pending queue was accepted and could exhaust worker memory");
+
+    bool zero_queue_rejected = false;
+    try {
+        (void)parse({"ninfer-serve", "model.ninfer", "--max-pending-requests", "0"});
+    } catch (const std::invalid_argument&) { zero_queue_rejected = true; }
+    failures += check(zero_queue_rejected, "zero pending queue was accepted");
+
     bool empty_model_id_rejected = false;
     try {
         (void)parse({"ninfer-serve", "model.ninfer", "--model-id", ""});

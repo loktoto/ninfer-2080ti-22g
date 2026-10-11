@@ -97,6 +97,7 @@ std::string serve_usage_text(const char* argv0) {
            "       --kv-capacity auto leaves " +
            std::to_string(kDefaultKvCapacityHeadroomBytes / (1024ULL * 1024ULL)) +
            " MiB of sizing headroom (bounded by max-context * max-concurrency)\n"
+           "       --max-pending-requests accepts 1..128 to bound HTTP worker threads\n"
            "       --no-prefix-reuse disables compatible-prefix caching (enabled by default)\n"
            "       --preserve-thinking retains closed-turn assistant reasoning in later prompts\n"
            "       sampler defaults come from the loaded model and resolved thinking mode; "
@@ -288,8 +289,9 @@ ServeOptions parse_serve_options(int argc, char** argv) {
     if (options.max_concurrency == 0 || options.max_concurrency > kMaximumConcurrency) {
         throw std::invalid_argument("--max-concurrency must be in [1,8]");
     }
-    if (options.max_pending_requests == 0) {
-        throw std::invalid_argument("--max-pending-requests must be positive");
+    if (options.max_pending_requests == 0 ||
+        options.max_pending_requests > kMaximumPendingRequests) {
+        throw std::invalid_argument("--max-pending-requests must be in [1,128]");
     }
     if (options.pending_timeout_ms == 0) {
         throw std::invalid_argument("--pending-timeout-ms must be positive");
