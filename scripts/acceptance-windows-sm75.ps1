@@ -187,7 +187,7 @@ $ContextResults = @()
 $ToolCallPassed = $null
 try {
     $env:NINFER_API_KEY = $ApiKey
-    $Process = Start-Process -FilePath $ServeExe -ArgumentList $ServerArgs -PassThru -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+    $Process = Start-Process -FilePath $ServeExe -ArgumentList $ServerArgs -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
 
     $Ready = $false
     for ($Attempt = 1; $Attempt -le $StartupRetries; $Attempt++) {

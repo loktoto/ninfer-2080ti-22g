@@ -40,6 +40,38 @@ explicit source change followed by hosted CI and physical RTX 2080 Ti re-qualifi
 
 The production path does not use `-allow-unsupported-compiler`.
 
+### Provisioning a fresh developer PC
+
+Run the developer bootstrap from Windows PowerShell 5.1:
+
+```powershell
+.\install\bootstrap-developer-windows-sm75.ps1
+```
+
+It installs the VS2022 14.44 C++ component and Windows SDK 26100 when needed,
+then provisions the pinned portable CUDA compiler, CMake and Ninja under
+`.deps\toolchain`. Downloads are checked against NVIDIA's versioned redistribution
+manifest, CMake's published SHA-256 list and the pinned Ninja archive digest.
+The build still checks the exact compiler and SDK versions against the production
+lock; an already-installed but incompatible Visual Studio installation fails that check.
+
+Do not substitute `winget install Nvidia.CUDA --version 13.1`: the package currently
+resolves to CUDA 13.1.1, whereas this lock requires the CUDA 13.1.0 compiler build
+13.1.80. The portable developer tools change only the current process environment.
+
+To provision tools without starting a build:
+
+```powershell
+.\install\bootstrap-developer-windows-sm75.ps1 -NoBuild
+# In a new shell, activate/provision the cached tools again before building:
+.\install\provision-developer-tools-windows-sm75.ps1
+.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunW8Regression
+```
+
+The bootstrap selects whole-program CUDA compilation and runs the W8 numerical
+regression on the physical device before staging. This remains a developer build;
+the ZIP-bound acceptance and release gates below still apply.
+
 ## Distribution contract
 
 `config/windows-sm75-distribution-contract.json` is the single package/install layout contract.
@@ -72,7 +104,7 @@ Full user guide: [INSTALL-WINDOWS-SM75.md](INSTALL-WINDOWS-SM75.md).
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-windows-sm75.ps1 -Clean
+.\scripts\build-windows-sm75.ps1 -Clean -WholeProgramCuda -BuildW8Regression
 ```
 
 The script:
@@ -93,7 +125,7 @@ cannot load through the production registry.
 For an already-provisioned dependency tree:
 
 ```powershell
-.\scripts\build-windows-sm75.ps1 -SkipDependencies
+.\scripts\build-windows-sm75.ps1 -SkipDependencies -WholeProgramCuda -BuildW8Regression
 ```
 
 ## Pinned Qwen3.8 production artifact
@@ -264,6 +296,17 @@ The conformance cases cover the corrected T=161..192 route boundary (160/161/162
 poison/non-finite output detection, guard regions, input preservation and a numerical oracle.
 Exit code 77 ("no usable CUDA device") fails physical qualification. The hardware workflow restricts
 qualified compilation to at most two jobs.
+
+The 8K CLI smoke test disables thinking and requires the actual content output to
+equal `SM75 OK`. A successful process exit or matching diagnostic text alone is
+insufficient. Its host-only verdict regression can be run separately:
+
+```powershell
+.\scripts\test-windows-sm75-smoke.ps1
+```
+
+That test uses disposable console fixtures to check correct, wrong, empty and
+nonzero-exit responses under PowerShell 5.1; it provides no GPU inference evidence.
 
 ## Hardware acceptance sequence
 
