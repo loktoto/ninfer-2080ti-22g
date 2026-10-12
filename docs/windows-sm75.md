@@ -65,11 +65,12 @@ To provision tools without starting a build:
 .\install\bootstrap-developer-windows-sm75.ps1 -NoBuild
 # In a new shell, activate/provision the cached tools again before building:
 .\install\provision-developer-tools-windows-sm75.ps1
-.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunW8Regression
+.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunW8Regression -RunFrontendRegression
 ```
 
-The bootstrap selects whole-program CUDA compilation and runs the W8 numerical
-regression on the physical device before staging. This remains a developer build;
+The bootstrap selects whole-program CUDA compilation, checks the canonical chat
+templates without a model or GPU, and runs the W8 numerical regression on the
+physical device before staging. This remains a developer build;
 the ZIP-bound acceptance and release gates below still apply.
 
 ## Distribution contract
@@ -104,7 +105,7 @@ Full user guide: [INSTALL-WINDOWS-SM75.md](INSTALL-WINDOWS-SM75.md).
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-windows-sm75.ps1 -Clean -WholeProgramCuda -BuildW8Regression
+.\scripts\build-windows-sm75.ps1 -Clean -WholeProgramCuda -BuildW8Regression -RunFrontendRegression
 ```
 
 The script:
@@ -125,7 +126,7 @@ cannot load through the production registry.
 For an already-provisioned dependency tree:
 
 ```powershell
-.\scripts\build-windows-sm75.ps1 -SkipDependencies -WholeProgramCuda -BuildW8Regression
+.\scripts\build-windows-sm75.ps1 -SkipDependencies -WholeProgramCuda -BuildW8Regression -RunFrontendRegression
 ```
 
 ## Pinned Qwen3.8 production artifact

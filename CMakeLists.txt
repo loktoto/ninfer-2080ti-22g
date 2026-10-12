@@ -32,6 +32,8 @@ option(BUILD_TESTING "Build NInfer tests" OFF)
 option(NINFER_BUILD_BENCHMARKS "Build NInfer benchmarks" OFF)
 option(NINFER_BUILD_SM75_W8_REGRESSION
   "Build the focused SM75 W8 LinearPair conformance executable" OFF)
+option(NINFER_BUILD_SM75_FRONTEND_REGRESSION
+  "Build the artifact-free canonical chat-template regression executable" OFF)
 option(NINFER_QWEN38_ONLY
   "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
 option(NINFER_CUDA_WHOLE_PROGRAM
@@ -155,6 +157,18 @@ endif()
 
 if(NINFER_BUILD_APPS)
   add_subdirectory(apps)
+endif()
+if(NINFER_BUILD_SM75_FRONTEND_REGRESSION AND NOT BUILD_TESTING)
+  add_executable(ninfer_qwen3_6_frontend_test tests/targets/qwen3_6/test_frontend.cpp)
+  target_include_directories(ninfer_qwen3_6_frontend_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party
+    ${PROJECT_SOURCE_DIR}/third_party/utf8proc
+    ${PROJECT_SOURCE_DIR}/src/targets/qwen3_6/export
+    ${PROJECT_SOURCE_DIR}/src/targets/qwen3_6/impl)
+  target_compile_definitions(ninfer_qwen3_6_frontend_test PRIVATE
+    NINFER_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  target_link_libraries(ninfer_qwen3_6_frontend_test PRIVATE ninfer_engine ninfer_core)
 endif()
 if(BUILD_TESTING)
   enable_testing()

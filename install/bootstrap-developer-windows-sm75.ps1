@@ -81,7 +81,7 @@ Write-Host $NvccText.Trim()
 if (-not $NoBuild) {
     Write-Host ""
     Write-Host "== Clean Qwen3.8 / SM75 production build =="
-    & (Join-Path $Root "scripts\build-windows-sm75.ps1") -Clean -BuildJobs $BuildJobs -WholeProgramCuda -RunW8Regression
+    & (Join-Path $Root "scripts\build-windows-sm75.ps1") -Clean -BuildJobs $BuildJobs -WholeProgramCuda -RunW8Regression -RunFrontendRegression
     & (Join-Path $Root "scripts\verify-windows-sm75.ps1")
     & (Join-Path $Root "scripts\package-windows-sm75.ps1")
     & (Join-Path $Root "scripts\verify-package-windows-sm75.ps1")

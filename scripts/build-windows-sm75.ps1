@@ -10,6 +10,7 @@ param(
     [int]$BuildJobs = 2,
     [switch]$BuildW8Regression,
     [switch]$RunW8Regression,
+    [switch]$RunFrontendRegression,
     [switch]$WholeProgramCuda,
     [switch]$SkipDependencies,
     [switch]$Clean
@@ -147,6 +148,7 @@ $CmakeArgs = @(
     "-DNINFER_QWEN38_ONLY=ON",
     "-DNINFER_CUDA_WHOLE_PROGRAM=$($WholeProgramCuda.IsPresent.ToString().ToUpperInvariant())",
     "-DNINFER_BUILD_SM75_W8_REGRESSION=$($BuildW8Regression.IsPresent.ToString().ToUpperInvariant())",
+    "-DNINFER_BUILD_SM75_FRONTEND_REGRESSION=$($RunFrontendRegression.IsPresent.ToString().ToUpperInvariant())",
     "-DBUILD_TESTING=OFF",
     "-DNINFER_BUILD_BENCHMARKS=OFF"
 )
@@ -156,9 +158,16 @@ Invoke-Checked { cmake.exe @CmakeArgs } "CMake configure"
 
 $BuildTargets = @("ninfer","ninfer-serve")
 if ($BuildW8Regression) { $BuildTargets += "ninfer_linear_pair_w8_a16_test" }
+if ($RunFrontendRegression) { $BuildTargets += "ninfer_qwen3_6_frontend_test" }
 $BuildArgs = @("--build",$BuildPath,"--target") + $BuildTargets + @("--parallel",$BuildJobs.ToString())
 Write-Host "Compiling Qwen3.8-only SM75 targets [$($BuildTargets -join ', ')] with $BuildJobs parallel job(s) ..."
 Invoke-Checked { cmake.exe @BuildArgs } "CMake build"
+
+if ($RunFrontendRegression) {
+    Write-Host "Running artifact-free canonical chat-template regressions..."
+    $FrontendExe = Join-Path $BuildPath "ninfer_qwen3_6_frontend_test.exe"
+    Invoke-Checked { & $FrontendExe --chat-template-only } "Canonical frontend regression"
+}
 
 if ($RunW8Regression) {
     $W8Exe = Get-ChildItem $BuildPath -Recurse -Filter "ninfer_linear_pair_w8_a16_test.exe" -File |
