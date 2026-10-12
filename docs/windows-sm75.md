@@ -5,6 +5,9 @@ Maintained by [loktoto](https://github.com/loktoto), based on the Apache-2.0 [NI
 This branch provides the native Windows/MSVC product path for the Turing `sm_75` port.
 The deliverable is a staged runtime plus a checksummed ZIP; WSL2 is not required.
 
+See [local Windows validation](WINDOWS-SM75-LOCAL-VALIDATION.md) for the tested
+package, installation fixes, successful Base checks and failed production gates.
+
 ## Runtime requirements
 
 For the packaged Windows release:
