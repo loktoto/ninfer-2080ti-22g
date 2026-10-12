@@ -67,6 +67,10 @@ jobs:
         shell: powershell
         run: .\scripts\test-windows-sm75-smoke.ps1
 
+      - name: Test GPU preflight inventory selection
+        shell: powershell
+        run: .\scripts\test-windows-sm75-gpu-preflight.ps1
+
   build:
     needs: powershell51-preflight
     runs-on: windows-2022
