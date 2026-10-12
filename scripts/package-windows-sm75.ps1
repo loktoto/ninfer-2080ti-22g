@@ -14,7 +14,8 @@ if (-not (Test-Path $DistributionValidator -PathType Leaf)) {
     throw "Distribution contract validator not found: $DistributionValidator"
 }
 & $DistributionValidator
-if ($LASTEXITCODE -ne 0) { throw "Distribution source contract validation failed." }
+# This validator is a PowerShell script and throws on failure. LASTEXITCODE is
+# only defined by native commands and can be unset in a fresh PowerShell 5.1 host.
 
 $DistributionSourcePath = Join-Path $RepoRoot "config\windows-sm75-distribution-contract.json"
 $DistributionContract = Get-Content $DistributionSourcePath -Raw | ConvertFrom-Json
