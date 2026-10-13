@@ -20,8 +20,8 @@ retrieval, required-tool-call and greedy MTP parity gates did not pass. See the
 | Workstream | Source of truth | Current release implication |
 | --- | --- | --- |
 | Native Windows runtime, installer, build and package | [PR #2](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) · [Windows workflow](https://github.com/loktoto/ninfer-2080ti-22g/actions/workflows/windows-sm75.yml) | Needs full hosted package CI **and** physical-device qualification |
-| Optional RK4V4E8 compressed KV path | [PR #14](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Not part of the default Windows product; requires its own conformance gate |
-| SM75 correctness / stacked integration | [PR #40](https://github.com/loktoto/ninfer-2080ti-22g/pull/40), [PR #41](https://github.com/loktoto/ninfer-2080ti-22g/pull/41) | Stacked merges must actually reach their root branch before a master merge |
+| Optional RK4V4E8 compressed KV path | [PR #14 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Opt-in on `master`; still requires physical Windows conformance |
+| SM75 correctness / stacked integration | [PR #40 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/40), [PR #41 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/41) | Implemented via #14 integration; physical correctness remains independently gated |
 | Windows installer regressions | [PR #42](https://github.com/loktoto/ninfer-2080ti-22g/pull/42), [PR #43](https://github.com/loktoto/ninfer-2080ti-22g/pull/43) | Fast PowerShell 5.1 and upgrade/rollback checks; do not replace full package testing |
 | Published builds | [Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases) | **No production release claimed until hardware evidence exists** |
 

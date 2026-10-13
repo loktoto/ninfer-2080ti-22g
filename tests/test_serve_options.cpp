@@ -71,6 +71,22 @@ int main() {
                   resolve_public_model_id(model_alias, "artifact-model") == "deployment-alias",
               "explicit model id did not override the artifact identity");
 
+    bool overflow_concurrency_rejected = false;
+    try {
+        (void)parse({"ninfer-serve", "model.ninfer", "--max-concurrency",
+                     "99999999999999999999999999999999999999999999"});
+    } catch (const std::invalid_argument&) { overflow_concurrency_rejected = true; }
+    failures += check(overflow_concurrency_rejected,
+                      "strtol overflow was accepted for --max-concurrency");
+
+    bool overflow_pending_rejected = false;
+    try {
+        (void)parse({"ninfer-serve", "model.ninfer", "--max-pending-requests",
+                     "99999999999999999999999999999999999999999999"});
+    } catch (const std::invalid_argument&) { overflow_pending_rejected = true; }
+    failures += check(overflow_pending_rejected,
+                      "strtol overflow was accepted for --max-pending-requests");
+
     bool empty_model_id_rejected = false;
     try {
         (void)parse({"ninfer-serve", "model.ninfer", "--model-id", ""});

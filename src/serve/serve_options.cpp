@@ -13,9 +13,10 @@ namespace ninfer::serve {
 namespace {
 
 int parse_nonnegative_int(const char* text, const char* label) {
+    errno           = 0;
     char* end        = nullptr;
     const long value = std::strtol(text, &end, 10);
-    if (end == text || *end != '\0' || value < 0 ||
+    if (errno == ERANGE || end == text || *end != '\0' || value < 0 ||
         value > static_cast<long>(std::numeric_limits<int>::max())) {
         throw std::invalid_argument(std::string("invalid ") + label + ": " + text);
     }
