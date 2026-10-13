@@ -1,6 +1,11 @@
 # Project status · NInfer SM75 by loktoto
 
-> Snapshot documented **2026-10-08**. This file is a roadmap and release-gate reference, not a live CI report. Check the linked GitHub pages for the latest actual status.
+> Snapshot documented **2026-10-13**. This file is a roadmap and release-gate reference, not a live CI report. Check the linked GitHub pages for the latest actual status.
+
+Local native Windows installation and short Base-mode GPU/API checks now pass on
+an RTX 2080 Ti 22GB. **Production qualification remains failed**: the tested 8K
+retrieval, required-tool-call and greedy MTP parity gates did not pass. See the
+[exact package, fixes, evidence and reproduction report](WINDOWS-SM75-LOCAL-VALIDATION.md).
 
 ## Maintained product
 

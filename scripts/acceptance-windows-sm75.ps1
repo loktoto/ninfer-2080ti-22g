@@ -133,6 +133,21 @@ function Get-GeneratedTokenIds([string]$StderrPath) {
     return $TokenIds
 }
 
+function Invoke-CliCaptured([string[]]$Arguments, [string]$StderrPath) {
+    # Fixed acceptance prompts and valid Windows model paths contain no quotes.
+    # Quote every argument to preserve prompt/path spaces in Start-Process.
+    $Quoted = foreach ($Argument in $Arguments) {
+        if ($Argument.Contains('"')) { throw 'Unexpected quote in acceptance CLI argument.' }
+        '"' + $Argument + '"'
+    }
+    $StdoutPath = $StderrPath.Replace('.stderr.log', '.stdout.log')
+    # PowerShell 5.1 treats native stderr redirection as NativeCommandError
+    # under Stop. Capture both streams with the process API instead.
+    $Child = Start-Process -FilePath $CliExe -ArgumentList $Quoted -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+    if ($Child.ExitCode -ne 0) { throw "CLI exited with code $($Child.ExitCode). See $StderrPath" }
+    return [IO.File]::ReadAllText($StdoutPath).Trim()
+}
+
 function Get-CliMetric([string]$StderrPath, [string]$MetricName) {
     $Value = $null
     foreach ($Line in Get-Content $StderrPath) {
@@ -187,7 +202,7 @@ $ContextResults = @()
 $ToolCallPassed = $null
 try {
     $env:NINFER_API_KEY = $ApiKey
-    $Process = Start-Process -FilePath $ServeExe -ArgumentList $ServerArgs -PassThru -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+    $Process = Start-Process -FilePath $ServeExe -ArgumentList $ServerArgs -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
 
     $Ready = $false
     for ($Attempt = 1; $Attempt -le $StartupRetries; $Attempt++) {
@@ -266,9 +281,21 @@ try {
             stream = $false
         }
         $ToolResponse = Invoke-NInferJson "POST" "http://127.0.0.1:$Port/v1/chat/completions" $ToolBody
-        $ToolCalls = $ToolResponse.choices[0].message.tool_calls
+        $ToolEvidencePath = Join-Path $EvidenceDir "tool-response-$Stamp.json"
+        $ToolResponse | ConvertTo-Json -Depth 20 | Set-Content $ToolEvidencePath -Encoding UTF8
+        $ToolMessage = $ToolResponse.choices[0].message
+        $ToolCalls = @()
+        if ($null -ne $ToolMessage.PSObject.Properties['tool_calls']) {
+            $ToolCalls = @($ToolMessage.tool_calls)
+        }
         if (-not $ToolCalls -or $ToolCalls.Count -lt 1) {
-            throw "Tool-call acceptance failed: the required tool call was not returned."
+            throw "Tool-call acceptance failed: the required tool call was not returned. See $ToolEvidencePath"
+        }
+        $WeatherCall = $ToolCalls | Where-Object { $_.function.name -eq "get_weather" } | Select-Object -First 1
+        if (-not $WeatherCall) { throw "Tool-call acceptance failed: get_weather was not returned. See $ToolEvidencePath" }
+        $WeatherArguments = $WeatherCall.function.arguments | ConvertFrom-Json
+        if ($null -eq $WeatherArguments.PSObject.Properties['city'] -or $WeatherArguments.city -cne "Paris") {
+            throw "Tool-call acceptance failed: get_weather city must be Paris. See $ToolEvidencePath"
         }
         $ToolCallPassed = $true
     }
@@ -303,13 +330,11 @@ if (-not $SkipMtpParity) {
     )
     $BaseErr = Join-Path $EvidenceDir "mtp0-$Stamp.stderr.log"
     $MtpErr = Join-Path $EvidenceDir "mtp3-$Stamp.stderr.log"
-    $Mtp0Text = (& $CliExe @Common 2>$BaseErr | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "MTP0 parity control failed. See $BaseErr" }
+    $Mtp0Text = Invoke-CliCaptured $Common $BaseErr
     $Mtp0Ids = Get-GeneratedTokenIds $BaseErr
 
     $Mtp3Args = $Common + @("--spec","mtp","--draft-tokens","3","--lm-head-draft")
-    $Mtp3Text = (& $CliExe @Mtp3Args 2>$MtpErr | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "MTP3 parity run failed. See $MtpErr" }
+    $Mtp3Text = Invoke-CliCaptured $Mtp3Args $MtpErr
     $Mtp3Ids = Get-GeneratedTokenIds $MtpErr
 
     if ($Mtp0Ids -ne $Mtp3Ids) {

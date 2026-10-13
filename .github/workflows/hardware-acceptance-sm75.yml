@@ -47,12 +47,17 @@ jobs:
 
       - name: Clean production build
         shell: powershell
+        env:
+          NINFER_BUILD_JOBS: ${{ inputs.build_jobs }}
         run: |
-          $jobs = [int]"${{ inputs.build_jobs }}"
+          $jobs = 0
+          if (-not [int]::TryParse($env:NINFER_BUILD_JOBS, [ref]$jobs)) {
+            throw "build_jobs must be an integer."
+          }
           if ($jobs -lt 1 -or $jobs -gt 2) {
             throw "Qualified SM75 builds are limited to 1-2 parallel compile jobs."
           }
-          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs -RunW8Regression
+          .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs $jobs -RunW8Regression -WholeProgramCuda
 
       - name: Verify and package runtime
         shell: powershell
@@ -63,9 +68,12 @@ jobs:
 
       - name: Run physical GPU acceptance against extracted qualified ZIP
         shell: powershell
+        env:
+          NINFER_MODEL_PATH: ${{ inputs.model_path }}
         run: |
           $ErrorActionPreference = "Stop"
-          $model = "${{ inputs.model_path }}"
+          $model = $env:NINFER_MODEL_PATH
+          if ([string]::IsNullOrWhiteSpace($model)) { throw "model_path must not be empty." }
           $zip = Get-ChildItem .\dist -Filter "ninfer-windows-sm75-*.zip" -File |
             Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
           if (-not $zip) { throw "Qualified ZIP was not produced." }

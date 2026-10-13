@@ -5,6 +5,9 @@ Maintained by [loktoto](https://github.com/loktoto), based on the Apache-2.0 [NI
 This branch provides the native Windows/MSVC product path for the Turing `sm_75` port.
 The deliverable is a staged runtime plus a checksummed ZIP; WSL2 is not required.
 
+See [local Windows validation](WINDOWS-SM75-LOCAL-VALIDATION.md) for the tested
+package, installation fixes, successful Base checks and failed production gates.
+
 ## Runtime requirements
 
 For the packaged Windows release:
@@ -40,6 +43,39 @@ explicit source change followed by hosted CI and physical RTX 2080 Ti re-qualifi
 
 The production path does not use `-allow-unsupported-compiler`.
 
+### Provisioning a fresh developer PC
+
+Run the developer bootstrap from Windows PowerShell 5.1:
+
+```powershell
+.\install\bootstrap-developer-windows-sm75.ps1
+```
+
+It installs the VS2022 14.44 C++ component and Windows SDK 26100 when needed,
+then provisions the pinned portable CUDA compiler, CMake and Ninja under
+`.deps\toolchain`. Downloads are checked against NVIDIA's versioned redistribution
+manifest, CMake's published SHA-256 list and the pinned Ninja archive digest.
+The build still checks the exact compiler and SDK versions against the production
+lock; an already-installed but incompatible Visual Studio installation fails that check.
+
+Do not substitute `winget install Nvidia.CUDA --version 13.1`: the package currently
+resolves to CUDA 13.1.1, whereas this lock requires the CUDA 13.1.0 compiler build
+13.1.80. The portable developer tools change only the current process environment.
+
+To provision tools without starting a build:
+
+```powershell
+.\install\bootstrap-developer-windows-sm75.ps1 -NoBuild
+# In a new shell, activate/provision the cached tools again before building:
+.\install\provision-developer-tools-windows-sm75.ps1
+.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunW8Regression -RunFrontendRegression -RunAttentionRegression
+```
+
+The bootstrap selects whole-program CUDA compilation, checks the canonical chat
+templates without a model or GPU, and runs the W8, MMA and GQA numerical regressions
+on the physical device before staging. This remains a developer build;
+the ZIP-bound acceptance and release gates below still apply.
+
 ## Distribution contract
 
 `config/windows-sm75-distribution-contract.json` is the single package/install layout contract.
@@ -72,7 +108,7 @@ Full user guide: [INSTALL-WINDOWS-SM75.md](INSTALL-WINDOWS-SM75.md).
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-windows-sm75.ps1 -Clean
+.\scripts\build-windows-sm75.ps1 -Clean -WholeProgramCuda -BuildW8Regression -BuildAttentionRegression -RunFrontendRegression
 ```
 
 The script:
@@ -93,7 +129,7 @@ cannot load through the production registry.
 For an already-provisioned dependency tree:
 
 ```powershell
-.\scripts\build-windows-sm75.ps1 -SkipDependencies
+.\scripts\build-windows-sm75.ps1 -SkipDependencies -WholeProgramCuda -BuildW8Regression -BuildAttentionRegression -RunFrontendRegression
 ```
 
 ## Pinned Qwen3.8 production artifact
@@ -252,6 +288,18 @@ uses `NINFER_API_KEY`, or pass `-ApiKey` explicitly.
 
 ## SM75 W8 LinearPair regression gate
 
+The INT8 KV path also requires the SM75 MMA and GQA attention numerical gates:
+
+```powershell
+.\scripts\build-windows-sm75.ps1 -BuildJobs 2 -WholeProgramCuda -RunAttentionRegression
+```
+
+The standalone MMA test compares every output against dense CPU matrix products,
+including signed inputs and nonzero accumulators. The existing GQA test checks
+BF16/INT8 attention against its independent represented-input reference, including
+paged mappings, small-T, prefill and batched verification. `-BuildAttentionRegression`
+only builds these targets for hosted CI; it does not claim a physical GPU pass.
+
 Hosted Windows CI builds the focused `ninfer_linear_pair_w8_a16_test` target to catch source/link
 regressions without claiming numerical GPU validation. Physical RTX 2080 Ti qualification runs the
 same executable on SM75 before packaging:
@@ -264,6 +312,17 @@ The conformance cases cover the corrected T=161..192 route boundary (160/161/162
 poison/non-finite output detection, guard regions, input preservation and a numerical oracle.
 Exit code 77 ("no usable CUDA device") fails physical qualification. The hardware workflow restricts
 qualified compilation to at most two jobs.
+
+The 8K CLI smoke test disables thinking and requires the actual content output to
+equal `SM75 OK`. A successful process exit or matching diagnostic text alone is
+insufficient. Its host-only verdict regression can be run separately:
+
+```powershell
+.\scripts\test-windows-sm75-smoke.ps1
+```
+
+That test uses disposable console fixtures to check correct, wrong, empty and
+nonzero-exit responses under PowerShell 5.1; it provides no GPU inference evidence.
 
 ## Hardware acceptance sequence
 
@@ -361,3 +420,9 @@ for that exact binary before publishing the ZIP, checksum, SBOM and hardware evi
 
 Compile-only CI can never auto-publish a production release, and a different rebuild cannot be
 substituted for the hardware-qualified bytes.
+
+### Windows CUDA link-mode qualification
+
+Windows hosted CI uses `-WholeProgramCuda` to explicitly opt into the `NINFER_CUDA_WHOLE_PROGRAM=ON` (non-relocatable device code) configuration. Historical RDC-mode Windows runs on 2026-10-08 reached Ninja `[382/390]` but stalled during the final linking tail until the six-hour workflow limit; the opt-in trial tests whether avoiding redundant static-library device resolution removes this bottleneck. The existing Linux SM75 whole-program build passed, but a Windows release remains **unqualified until its own native build, packaging, and physical RTX 2080 Ti 22GB GPU acceptance succeed**. No Windows speedup is claimed before that evidence.
+
+Local source builds retain the default RDC path unless `-WholeProgramCuda` is supplied. Both the hosted package workflow and the exact-SHA self-hosted GPU-acceptance workflow request the same non-RDC mode; the release workflow publishes only the physically qualified ZIP. If whole-program compilation fails, fix the relevant device-link dependency rather than silently publishing an untested fallback.
