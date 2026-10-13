@@ -3,7 +3,9 @@
 #include <nlohmann/json.hpp>
 
 #include <iostream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -22,6 +24,25 @@ int main() {
     int failures = 0;
     ServeOptions options;
     options.max_request_bytes = 1234;
+
+    // Direct HTTP-server constructors must obey the same resource bounds as the CLI.
+    bool oversized_worker_pool_rejected = false;
+    try {
+        ServeOptions huge = options;
+        huge.max_pending_requests = ninfer::serve::kMaximumPendingRequests + 1;
+        ninfer::serve::HttpServer server(std::move(huge));
+    } catch (const std::invalid_argument&) { oversized_worker_pool_rejected = true; }
+    failures += check(oversized_worker_pool_rejected,
+                      "direct HttpServer constructor accepted an excessive pending thread budget");
+
+    bool invalid_direct_concurrency_rejected = false;
+    try {
+        ServeOptions huge = options;
+        huge.max_concurrency = 0;
+        ninfer::serve::HttpServer server(std::move(huge));
+    } catch (const std::invalid_argument&) { invalid_direct_concurrency_rejected = true; }
+    failures += check(invalid_direct_concurrency_rejected,
+                      "direct HttpServer constructor accepted zero max_concurrency");
 
     const ninfer::serve::ApiError media_budget = ninfer::serve::request_error_to_api_error(
         ninfer::RequestError(ninfer::RequestErrorKind::MediaBudgetExceeded,

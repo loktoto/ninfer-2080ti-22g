@@ -128,6 +128,13 @@ HttpServer::HttpServer(ServeOptions options)
     : options_(std::move(options)),
       response_store_(options_.response_store_max_records, options_.response_store_max_bytes),
       request_jsonl_(options_.request_log_jsonl, options_.artifact_path) {
+    // Callers constructing ServeOptions directly must obey the same resource budget
+    // as the CLI; otherwise ThreadPool may try to allocate billions of workers.
+    if (options_.max_concurrency == 0 || options_.max_concurrency > kMaximumConcurrency ||
+        options_.max_pending_requests == 0 ||
+        options_.max_pending_requests > kMaximumPendingRequests) {
+        throw std::invalid_argument("invalid HTTP worker concurrency/pending-request budget");
+    }
     const std::size_t queued_requests =
         static_cast<std::size_t>(options_.max_concurrency) + options_.max_pending_requests;
     const std::size_t worker_count = queued_requests + 1;
