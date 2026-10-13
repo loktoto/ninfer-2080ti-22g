@@ -59,7 +59,7 @@ jobs:
             ninfer_qwen3_6_runtime_mechanisms_test \
             ninfer_qwen3_6_27b_load_plan_test \
             ninfer_bench_support_test \
-            ninfer_media_acquire_test
+            ninfer_media_acquire_test \
             ninfer_linear_pair_w8_a16_test
 
       - name: Run CPU-safe contract tests
