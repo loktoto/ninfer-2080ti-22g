@@ -63,6 +63,14 @@ jobs:
         shell: powershell
         run: .\\scripts\\test-windows-sm75-upgrade-model.ps1
 
+      - name: Test smoke verdicts without a GPU or model
+        shell: powershell
+        run: .\scripts\test-windows-sm75-smoke.ps1
+
+      - name: Test GPU preflight inventory selection
+        shell: powershell
+        run: .\scripts\test-windows-sm75-gpu-preflight.ps1
+
   build:
     needs: powershell51-preflight
     runs-on: windows-2022
@@ -108,7 +116,7 @@ jobs:
 
       - name: Build and stage native SM75 runtime
         shell: pwsh
-        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2 -BuildW8Regression -WholeProgramCuda
+        run: .\scripts\build-windows-sm75.ps1 -Clean -BuildJobs 2 -BuildW8Regression -BuildAttentionRegression -WholeProgramCuda -RunFrontendRegression
 
       - name: Verify packaged binaries start
         shell: pwsh

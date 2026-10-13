@@ -1,5 +1,15 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+if(CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+  if(NOT TARGET ninfer_sm75_mma_test)
+    add_executable(ninfer_sm75_mma_test ops/test_sm75_mma.cu)
+    target_include_directories(ninfer_sm75_mma_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(ninfer_sm75_mma_test PRIVATE CUDA::cudart)
+  endif()
+  add_test(NAME ninfer_sm75_mma_test COMMAND ninfer_sm75_mma_test)
+  set_tests_properties(ninfer_sm75_mma_test PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
 # This target deliberately receives no src/, CUDA, artifact, kernel, or target
 # include root. It proves that the installed product headers stand alone.
 add_executable(ninfer_public_api_test test_public_api.cpp)
