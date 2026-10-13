@@ -66,13 +66,17 @@ std::vector<std::uint8_t> decode_base64(std::string_view text) {
     std::uint32_t bits = 0;
     int count          = 0;
     bool padded        = false;
+    std::size_t sextets = 0;
+    std::size_t padding = 0;
     for (const unsigned char c : text) {
+        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') { continue; }
         if (c == '=') {
             padded = true;
+            if (++padding > 2) { throw std::invalid_argument("malformed base64 media padding"); }
             continue;
         }
-        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') { continue; }
         if (padded || table[c] < 0) { throw std::invalid_argument("malformed base64 media data"); }
+        ++sextets;
         bits = (bits << 6U) | static_cast<std::uint32_t>(table[c]);
         count += 6;
         if (count >= 8) {
@@ -80,7 +84,14 @@ std::vector<std::uint8_t> decode_base64(std::string_view text) {
             out.push_back(static_cast<std::uint8_t>((bits >> count) & 0xffU));
         }
     }
-    if (count >= 6) { throw std::invalid_argument("malformed base64 media padding"); }
+    const std::size_t remainder = sextets % 4;
+    if (remainder == 1 ||
+        (padding != 0 && (sextets + padding) % 4 != 0) ||
+        (padding == 1 && remainder != 3) ||
+        (padding == 2 && remainder != 2) ||
+        (count != 0 && (bits & ((1U << count) - 1U)) != 0)) {
+        throw std::invalid_argument("malformed base64 media padding");
+    }
     return out;
 }
 
@@ -134,9 +145,10 @@ UrlParts parse_url(std::string_view value) {
     out.scheme             = curlu_part(url.get(), CURLUPART_SCHEME);
     out.host               = curlu_part(url.get(), CURLUPART_HOST);
     out.port               = curlu_part(url.get(), CURLUPART_PORT, CURLU_DEFAULT_PORT);
-    const std::string user = curlu_part(url.get(), CURLUPART_USER);
+    const std::string user     = curlu_part(url.get(), CURLUPART_USER);
+    const std::string password = curlu_part(url.get(), CURLUPART_PASSWORD);
     if ((out.scheme != "http" && out.scheme != "https") || out.host.empty() || out.port.empty() ||
-        !user.empty()) {
+        !user.empty() || !password.empty()) {
         throw std::invalid_argument("media URL must be credential-free HTTP(S)");
     }
     return out;
