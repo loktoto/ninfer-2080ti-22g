@@ -3,6 +3,10 @@ name: SM75 build and contract tests
 on:
   pull_request:
 
+# Hosted CUDA verification only reads repository source; never grant it a write token.
+permissions:
+  contents: read
+
 concurrency:
   group: sm75-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -23,7 +27,7 @@ jobs:
           rm -rf /var/lib/apt/lists/*
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Validate SM75 probe scripts
         shell: bash
@@ -83,7 +87,7 @@ jobs:
           rm -rf /var/lib/apt/lists/*
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Build SM75 whole-program audit mode
         shell: bash
