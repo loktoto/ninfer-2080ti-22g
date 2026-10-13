@@ -32,8 +32,14 @@ option(BUILD_TESTING "Build NInfer tests" OFF)
 option(NINFER_BUILD_BENCHMARKS "Build NInfer benchmarks" OFF)
 option(NINFER_BUILD_SM75_W8_REGRESSION
   "Build the focused SM75 W8 LinearPair conformance executable" OFF)
+option(NINFER_BUILD_SM75_FRONTEND_REGRESSION
+  "Build the artifact-free canonical chat-template regression executable" OFF)
+option(NINFER_BUILD_SM75_ATTENTION_REGRESSION
+  "Build SM75 MMA and GQA attention numerical regressions" OFF)
 option(NINFER_QWEN38_ONLY
   "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
+option(NINFER_CUDA_WHOLE_PROGRAM
+  "Disable relocatable CUDA device code for whole-program ptxas optimization" OFF)
 
 if(NINFER_QWEN38_ONLY)
   if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
@@ -116,6 +122,23 @@ find_package(Threads REQUIRED)
 # --- Subdirectories ----------------------------------------------------------
 add_subdirectory(src)
 
+# NInfer currently has no cross-translation-unit device calls, device function pointers, dynamic
+# parallelism, or external device/constant definitions. Keep the established RDC build as the
+# default, but expose a controlled A/B mode for SM75 resource audits and WSL2 ptxas qualification.
+# The option is applied after src creates the targets so it overrides their archive defaults without
+# changing the normal build path.
+if(NINFER_CUDA_WHOLE_PROGRAM)
+  foreach(target IN ITEMS ninfer_core ninfer_ops)
+    if(TARGET ${target})
+      set_target_properties(${target} PROPERTIES
+        CUDA_SEPARABLE_COMPILATION OFF
+        CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+    endif()
+  endforeach()
+  message(STATUS "NInfer CUDA whole-program mode enabled (RDC disabled for core/ops)")
+endif()
+
+
 if(NINFER_BUILD_SM75_W8_REGRESSION)
   if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
     message(FATAL_ERROR "NINFER_BUILD_SM75_W8_REGRESSION requires CMAKE_CUDA_ARCHITECTURES=75")
@@ -134,8 +157,36 @@ if(NINFER_BUILD_SM75_W8_REGRESSION)
   endif()
 endif()
 
+if(NINFER_BUILD_SM75_ATTENTION_REGRESSION)
+  if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+    message(FATAL_ERROR "NINFER_BUILD_SM75_ATTENTION_REGRESSION requires SM75")
+  endif()
+  add_executable(ninfer_sm75_mma_test tests/ops/test_sm75_mma.cu)
+  target_include_directories(ninfer_sm75_mma_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+  target_link_libraries(ninfer_sm75_mma_test PRIVATE CUDA::cudart)
+  if(NOT BUILD_TESTING)
+    add_executable(ninfer_gqa_attention_test tests/ops/test_gqa_attention.cpp)
+    target_include_directories(ninfer_gqa_attention_test PRIVATE
+      ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/include
+      ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party)
+    target_link_libraries(ninfer_gqa_attention_test PRIVATE ninfer_ops)
+  endif()
+endif()
+
 if(NINFER_BUILD_APPS)
   add_subdirectory(apps)
+endif()
+if(NINFER_BUILD_SM75_FRONTEND_REGRESSION AND NOT BUILD_TESTING)
+  add_executable(ninfer_qwen3_6_frontend_test tests/targets/qwen3_6/test_frontend.cpp)
+  target_include_directories(ninfer_qwen3_6_frontend_test PRIVATE
+    ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party
+    ${PROJECT_SOURCE_DIR}/third_party/utf8proc
+    ${PROJECT_SOURCE_DIR}/src/targets/qwen3_6/export
+    ${PROJECT_SOURCE_DIR}/src/targets/qwen3_6/impl)
+  target_compile_definitions(ninfer_qwen3_6_frontend_test PRIVATE
+    NINFER_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  target_link_libraries(ninfer_qwen3_6_frontend_test PRIVATE ninfer_engine ninfer_core)
 endif()
 if(BUILD_TESTING)
   enable_testing()

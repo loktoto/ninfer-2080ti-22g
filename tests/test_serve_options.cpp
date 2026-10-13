@@ -59,6 +59,11 @@ int main() {
     failures += check(resolve_public_model_id(defaults, "artifact-model") == "artifact-model",
                       "artifact model id was not selected by default");
 
+    const ServeOptions rk4v4_e8 =
+        parse({"ninfer-serve", "model.ninfer", "--kv-dtype", "rk4v4-e8"});
+    failures += check(rk4v4_e8.kv_cache == ninfer::KvCacheStorage::RK4V4E8,
+                      "--kv-dtype rk4v4-e8 did not select RK4V4E8 storage");
+
     const ServeOptions model_alias =
         parse({"ninfer-serve", "model.ninfer", "--model-id", "deployment-alias"});
     failures +=
@@ -199,6 +204,8 @@ int main() {
                       "serve help omits media preparation controls");
     failures += check(serve_usage_text("ninfer-serve").find("--kv-capacity") != std::string::npos,
                       "serve help omits --kv-capacity");
+    failures += check(serve_usage_text("ninfer-serve").find("rk4v4-e8") != std::string::npos,
+                      "serve help omits rk4v4-e8 KV storage");
     failures += check(serve_usage_text("ninfer-serve").find("--response-store-max-mib") !=
                           std::string::npos,
                       "serve help omits Responses store limits");

@@ -71,19 +71,41 @@ Write-Host "  Driver:  $($Selected.Driver)"
 Write-Host "  Context: $Context"
 
 $PreviousVisibleDevices = $env:CUDA_VISIBLE_DEVICES
+$CaptureDir = Join-Path ([IO.Path]::GetTempPath()) ('ninfer-sm75-smoke-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $CaptureDir | Out-Null
 try {
     $env:CUDA_VISIBLE_DEVICES = $Device.ToString()
     Write-Host "Running deterministic Qwen3.8 SM75 smoke test..."
-    $Output = @(& $Exe $ModelPath --prompt "Reply with exactly: SM75 OK" --max-context $Context --max-new $MaxNew --kv-dtype int8 --greedy 2>&1)
-    $ExitCode = $LASTEXITCODE
-    $Output | ForEach-Object { Write-Host $_ }
+    $StdoutPath = Join-Path $CaptureDir 'stdout.txt'
+    $StderrPath = Join-Path $CaptureDir 'stderr.txt'
+    $CliArgs = @(
+        ('"' + $ModelPath + '"'),
+        '--prompt', '"Reply with exactly: SM75 OK"',
+        '--max-context', $Context.ToString(),
+        '--max-new', $MaxNew.ToString(),
+        '--kv-dtype', 'int8', '--greedy', '--no-thinking'
+    )
+    # Keep native stderr separate: Windows PowerShell 5.1 can turn redirected
+    # diagnostic output into terminating errors under ErrorActionPreference=Stop.
+    $Process = Start-Process -FilePath $Exe -ArgumentList $CliArgs -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput $StdoutPath -RedirectStandardError $StderrPath
+    $ExitCode = $Process.ExitCode
+    $Output = [IO.File]::ReadAllText($StdoutPath).Trim()
+    Write-Host ([IO.File]::ReadAllText($StderrPath))
+    Write-Host $Output
     if ($ExitCode -ne 0) { throw "NInfer smoke test failed with exit code $ExitCode." }
-    if ([string]::IsNullOrWhiteSpace(($Output -join "`n"))) { throw "NInfer returned no observable output." }
+    if ($Output -cne 'SM75 OK') {
+        throw "NInfer smoke test returned unexpected content: '$Output'. Expected exactly 'SM75 OK'."
+    }
 } finally {
     if ($null -eq $PreviousVisibleDevices) {
         Remove-Item Env:CUDA_VISIBLE_DEVICES -ErrorAction SilentlyContinue
     } else {
         $env:CUDA_VISIBLE_DEVICES = $PreviousVisibleDevices
+    }
+    $CaptureFull = [IO.Path]::GetFullPath($CaptureDir)
+    $TempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if ($CaptureFull.StartsWith($TempPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $CaptureFull -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 

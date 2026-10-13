@@ -12,6 +12,42 @@
 namespace ninfer::ops::detail {
 namespace {
 
+template <typename Geometry, bool PackedV, bool RotateK, bool RotateV, bool PackedK,
+          typename CacheView, typename Metadata>
+void launch_prompt_i8_attention_profile(const Tensor& q, const Tensor& positions, float scale,
+                                        const CacheView& cache, Metadata metadata, Tensor& out,
+                                        cudaStream_t stream) {
+    static const cudaError_t attr = cudaFuncSetAttribute(
+        gqa_attention_prefill_i8_kernel<Geometry, PackedV, RotateK, RotateV, PackedK, Metadata>,
+        cudaFuncAttributeMaxDynamicSharedMemorySize, kGqaPrefillI8SmemBytes);
+    CUDA_CHECK(attr);
+
+    const auto tokens = static_cast<std::int32_t>(q.ne[2]);
+    const dim3 attention_grid(static_cast<unsigned>(div_up(tokens, kGqaPrefillI8Br)),
+                              static_cast<unsigned>(Geometry::QHeads), 1u);
+    const Tensor& cache_k       = cache.k_pages;
+    const Tensor& cache_v       = cache.v_pages;
+    const Tensor& cache_k_scale = cache.k_scale_pages;
+    const Tensor& cache_v_scale = cache.v_scale_pages;
+    gqa_attention_prefill_i8_kernel<Geometry, PackedV, RotateK, RotateV, PackedK, Metadata>
+        <<<attention_grid, kGqaPrefillI8Threads, kGqaPrefillI8SmemBytes, stream>>>(
+            static_cast<const __nv_bfloat16*>(q.data),
+            static_cast<const std::int8_t*>(cache_k.data),
+            static_cast<const std::uint8_t*>(cache_v.data),
+            static_cast<const __half*>(cache_k_scale.data),
+            static_cast<const __half*>(cache_v_scale.data), metadata,
+            static_cast<const std::int32_t*>(positions.data), scale,
+            static_cast<__nv_bfloat16*>(out.data), tokens);
+    CUDA_CHECK(cudaGetLastError());
+
+    if constexpr (RotateV) {
+        const int units = tokens * Geometry::QHeads * kGqaKvQuantGroups;
+        gqa_kv_inverse_rotate_output_kernel<Geometry::QHeads><<<units, 32, 0, stream>>>(
+            static_cast<__nv_bfloat16*>(out.data), tokens, tokens, 0, nullptr);
+        CUDA_CHECK(cudaGetLastError());
+    }
+}
+
 template <typename Geometry, typename CacheView, typename Metadata>
 void gqa_attention_prompt_attention_launch_for(const Tensor& q, const Tensor& positions,
                                                float scale, const CacheView& cache,
@@ -19,31 +55,23 @@ void gqa_attention_prompt_attention_launch_for(const Tensor& q, const Tensor& po
                                                cudaStream_t stream) {
     const Tensor& cache_k = cache.k_pages;
     const Tensor& cache_v = cache.v_pages;
-    // Both dtype-specialized kernels exceed the default 48 KiB dynamic-smem ceiling.
     static const cudaError_t attr_bf16 =
         cudaFuncSetAttribute(gqa_attention_prefill_bf16_kernel<Geometry, Metadata>,
                              cudaFuncAttributeMaxDynamicSharedMemorySize, kGqaPrefillSmemBytes);
     CUDA_CHECK(attr_bf16);
-    static const cudaError_t attr_i8 =
-        cudaFuncSetAttribute(gqa_attention_prefill_i8_kernel<Geometry, Metadata>,
-                             cudaFuncAttributeMaxDynamicSharedMemorySize, kGqaPrefillI8SmemBytes);
-    CUDA_CHECK(attr_i8);
 
     const auto tokens = static_cast<std::int32_t>(q.ne[2]);
     if (cache.dtype == DType::I8) {
-        const dim3 attention_grid(static_cast<unsigned>(div_up(tokens, kGqaPrefillI8Br)),
-                                  static_cast<unsigned>(Geometry::QHeads), 1u);
-        const Tensor& cache_k_scale = cache.k_scale_pages;
-        const Tensor& cache_v_scale = cache.v_scale_pages;
-        gqa_attention_prefill_i8_kernel<Geometry, Metadata>
-            <<<attention_grid, kGqaPrefillI8Threads, kGqaPrefillI8SmemBytes, stream>>>(
-                static_cast<const __nv_bfloat16*>(q.data),
-                static_cast<const std::int8_t*>(cache_k.data),
-                static_cast<const std::int8_t*>(cache_v.data),
-                static_cast<const __half*>(cache_k_scale.data),
-                static_cast<const __half*>(cache_v_scale.data), metadata,
-                static_cast<const std::int32_t*>(positions.data), scale,
-                static_cast<__nv_bfloat16*>(out.data), tokens);
+        if (cache.e8_lattice || cache.packed_k) {
+            launch_prompt_i8_attention_profile<Geometry, true, true, true, true>(
+                q, positions, scale, cache, metadata, out, stream);
+        } else if (cache.packed_v) {
+            launch_prompt_i8_attention_profile<Geometry, true, true, true, false>(
+                q, positions, scale, cache, metadata, out, stream);
+        } else {
+            launch_prompt_i8_attention_profile<Geometry, false, false, false, false>(
+                q, positions, scale, cache, metadata, out, stream);
+        }
     } else {
         const dim3 attention_grid(static_cast<unsigned>(div_up(tokens, kGqaPrefillBr)),
                                   static_cast<unsigned>(Geometry::QHeads), 1u);
@@ -54,6 +82,54 @@ void gqa_attention_prompt_attention_launch_for(const Tensor& q, const Tensor& po
                 static_cast<const __nv_bfloat16*>(cache_v.data), metadata,
                 static_cast<const std::int32_t*>(positions.data), scale,
                 static_cast<__nv_bfloat16*>(out.data), tokens);
+        CUDA_CHECK(cudaGetLastError());
+    }
+}
+
+template <typename Geometry, bool PackedV, bool RotateK, bool RotateV, bool PackedK,
+          bool E8Lattice, typename CacheView, typename Metadata>
+void launch_i8_append_profile(const Tensor& k, const Tensor& v, const Tensor& positions,
+                              CacheView cache, Metadata metadata, cudaStream_t stream) {
+    const auto tokens         = static_cast<std::int32_t>(k.ne[2]);
+    Tensor& cache_k           = cache.k_pages;
+    Tensor& cache_v           = cache.v_pages;
+    Tensor& cache_k_scale     = cache.k_scale_pages;
+    Tensor& cache_v_scale     = cache.v_scale_pages;
+    constexpr int kFillBlock = 256;
+
+    if (tokens >= 128 && Geometry::KVHeads == 2) {
+        constexpr int kPageBlock     = 256;
+        constexpr int kTokensPerTile = 8;
+        const int max_tiles          = div_up(tokens + kTokensPerTile - 1, kTokensPerTile);
+        const dim3 fill_grid(static_cast<unsigned>(max_tiles),
+                             static_cast<unsigned>(Geometry::KVHeads),
+                             static_cast<unsigned>(kGqaKvQuantGroups));
+        gqa_attention_prefill_fill_i8_page_kernel<Geometry, PackedV, RotateK, RotateV, PackedK,
+                                                   E8Lattice, Metadata>
+            <<<fill_grid, kPageBlock, 0, stream>>>(
+                static_cast<const __nv_bfloat16*>(k.data),
+                static_cast<const __nv_bfloat16*>(v.data),
+                static_cast<const std::int32_t*>(positions.data), metadata,
+                static_cast<std::int8_t*>(cache_k.data),
+                static_cast<std::uint8_t*>(cache_v.data),
+                static_cast<__half*>(cache_k_scale.data),
+                static_cast<__half*>(cache_v_scale.data), tokens);
+    } else {
+        constexpr int kFillWarps = kFillBlock / 32;
+        const std::int64_t fill_units =
+            static_cast<std::int64_t>(tokens) * Geometry::KVHeads * kGqaKvQuantGroups;
+        const int fill_grid =
+            static_cast<int>(div_up(fill_units, static_cast<std::int64_t>(kFillWarps)));
+        gqa_attention_prefill_fill_i8_kernel<Geometry, PackedV, RotateK, RotateV, PackedK,
+                                             E8Lattice, Metadata>
+            <<<fill_grid, kFillBlock, 0, stream>>>(
+                static_cast<const __nv_bfloat16*>(k.data),
+                static_cast<const __nv_bfloat16*>(v.data),
+                static_cast<const std::int32_t*>(positions.data), metadata,
+                static_cast<std::int8_t*>(cache_k.data),
+                static_cast<std::uint8_t*>(cache_v.data),
+                static_cast<__half*>(cache_k_scale.data),
+                static_cast<__half*>(cache_v_scale.data), tokens);
     }
     CUDA_CHECK(cudaGetLastError());
 }
@@ -65,45 +141,22 @@ void gqa_kv_append_launch_for(const Tensor& k, const Tensor& v, const Tensor& po
     Tensor& cache_k   = cache.k_pages;
     Tensor& cache_v   = cache.v_pages;
     if (cache.dtype == DType::I8) {
-        Tensor& cache_k_scale    = cache.k_scale_pages;
-        Tensor& cache_v_scale    = cache.v_scale_pages;
-        constexpr int kFillBlock = 256;
-        if (tokens >= 128 && Geometry::KVHeads == 2) {
-            constexpr int kPageBlock     = 256;
-            constexpr int kTokensPerTile = 8;
-            const int max_tiles          = div_up(tokens + kTokensPerTile - 1, kTokensPerTile);
-            const dim3 fill_grid(static_cast<unsigned>(max_tiles),
-                                 static_cast<unsigned>(Geometry::KVHeads),
-                                 static_cast<unsigned>(kGqaKvQuantGroups));
-            gqa_attention_prefill_fill_i8_page_kernel<Geometry, Metadata>
-                <<<fill_grid, kPageBlock, 0, stream>>>(
-                    static_cast<const __nv_bfloat16*>(k.data),
-                    static_cast<const __nv_bfloat16*>(v.data),
-                    static_cast<const std::int32_t*>(positions.data), metadata,
-                    static_cast<std::int8_t*>(cache_k.data),
-                    static_cast<std::int8_t*>(cache_v.data),
-                    static_cast<__half*>(cache_k_scale.data),
-                    static_cast<__half*>(cache_v_scale.data), tokens);
+        if (cache.e8_lattice) {
+            launch_i8_append_profile<Geometry, true, true, true, true, true>(
+                k, v, positions, cache, metadata, stream);
+        } else if (cache.packed_k) {
+            launch_i8_append_profile<Geometry, true, true, true, true, false>(
+                k, v, positions, cache, metadata, stream);
+        } else if (cache.packed_v) {
+            launch_i8_append_profile<Geometry, true, true, true, false, false>(
+                k, v, positions, cache, metadata, stream);
         } else {
-            constexpr int kFillWarps = kFillBlock / 32;
-            const std::int64_t fill_units =
-                static_cast<std::int64_t>(tokens) * Geometry::KVHeads * kGqaKvQuantGroups;
-            const int fill_grid =
-                static_cast<int>(div_up(fill_units, static_cast<std::int64_t>(kFillWarps)));
-            gqa_attention_prefill_fill_i8_kernel<Geometry, Metadata>
-                <<<fill_grid, kFillBlock, 0, stream>>>(
-                    static_cast<const __nv_bfloat16*>(k.data),
-                    static_cast<const __nv_bfloat16*>(v.data),
-                    static_cast<const std::int32_t*>(positions.data), metadata,
-                    static_cast<std::int8_t*>(cache_k.data),
-                    static_cast<std::int8_t*>(cache_v.data),
-                    static_cast<__half*>(cache_k_scale.data),
-                    static_cast<__half*>(cache_v_scale.data), tokens);
+            launch_i8_append_profile<Geometry, false, false, false, false, false>(
+                k, v, positions, cache, metadata, stream);
         }
-        CUDA_CHECK(cudaGetLastError());
     } else {
-        constexpr int kBlock           = Geometry::KVHeads == 4 ? 128 : 96;
-        constexpr int kFillVecElems    = 8;
+        constexpr int kBlock        = Geometry::KVHeads == 4 ? 128 : 96;
+        constexpr int kFillVecElems = 8;
         const std::int64_t kv_elements = static_cast<std::int64_t>(tokens) * Geometry::KVHeads *
                                          (kGqaPrefillHeadDim / kFillVecElems);
         const int fill_grid =

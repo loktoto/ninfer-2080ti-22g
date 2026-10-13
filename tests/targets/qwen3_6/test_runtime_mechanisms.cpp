@@ -65,6 +65,16 @@ q36::DecoderStateSpec decoder_spec(ninfer::DType dtype, bool mtp) {
     };
 }
 
+q36::DecoderStateSpec rk4v4_e8_spec(bool mtp) {
+    q36::DecoderStateSpec spec = decoder_spec(ninfer::DType::I8, mtp);
+    spec.kv_packed_v            = true;
+    spec.kv_rotate_k            = true;
+    spec.kv_rotate_v            = true;
+    spec.kv_packed_k            = true;
+    spec.kv_e8_lattice          = true;
+    return spec;
+}
+
 void test_decoder_layout() {
     ninfer::LayoutBuilder bf16_builder;
     const q36::DecoderStateLayout bf16 =
@@ -104,6 +114,32 @@ void test_decoder_layout() {
            "INT8 MTP KV has scale planes");
     expect(int8.kv_payload_bytes() == int8.text_kv.payload_bytes() + int8.mtp_kv->payload_bytes(),
            "INT8 Text/MTP KV payload accounting");
+
+    ninfer::LayoutBuilder rk_builder;
+    const q36::DecoderStateLayout rk = q36::plan_decoder_state(rk_builder, rk4v4_e8_spec(true));
+    (void)rk_builder.finish(256);
+    expect(rk.text_kv.pool.planes.size() == 8,
+           "RK4V4E8 Text KV keeps K/V plus scale planes per layer");
+    expect(rk.text_kv.pool.planes[0].spec.dtype == ninfer::DType::U8 &&
+               rk.text_kv.pool.planes[0].spec.leading_extent == 32 &&
+               rk.text_kv.pool.planes[1].spec.dtype == ninfer::DType::U8 &&
+               rk.text_kv.pool.planes[1].spec.leading_extent == 32,
+           "RK4V4E8 K/V planes are nibble-packed");
+    expect(rk.text_kv.pool.planes[2].spec.dtype == ninfer::DType::FP16 &&
+               rk.text_kv.pool.planes[2].spec.leading_extent == 1 &&
+               rk.text_kv.pool.planes[3].spec.dtype == ninfer::DType::FP16 &&
+               rk.text_kv.pool.planes[3].spec.leading_extent == 1,
+           "RK4V4E8 scale planes remain FP16 group64");
+    expect(rk.text_kv.packed_k && rk.text_kv.packed_v && rk.text_kv.rotate_k &&
+               rk.text_kv.rotate_v && rk.text_kv.e8_lattice,
+           "RK4V4E8 Text KV metadata is complete");
+    expect(rk.mtp_kv.has_value() && rk.mtp_kv->packed_k && rk.mtp_kv->packed_v &&
+               rk.mtp_kv->rotate_k && rk.mtp_kv->rotate_v && rk.mtp_kv->e8_lattice,
+           "RK4V4E8 MTP KV metadata matches Text KV");
+    expect(rk.kv_payload_bytes() < int8.kv_payload_bytes(),
+           "RK4V4E8 reduces KV payload below INT8");
+    expect(rk.kv_payload_bytes() == rk.text_kv.payload_bytes() + rk.mtp_kv->payload_bytes(),
+           "RK4V4E8 Text/MTP KV payload accounting");
 }
 
 void test_round_layout() {

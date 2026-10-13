@@ -202,12 +202,13 @@ void w8_pair_splitk_medium_launch(W8PairScheduleId schedule, const Tensor& x,
             return;
         }
         break;
+    // C192/C224/C256 have no SM75 instantiation: Turing's 48 KiB static shared-memory
+    // cap limits this kernel to a 184-column tile (a 192-column tile needs 50 KiB).
+    // They fall through to the closing throw so an unroutable T fails loudly rather
+    // than running a 160-column tile that leaves the remaining columns unwritten.
     case W8PairScheduleId::DualSplitKMediumC192:
     case W8PairScheduleId::DualSplitKMediumC224:
     case W8PairScheduleId::DualSplitKMediumC256:
-        // SM75 cannot instantiate these medium tiles within the shared-memory envelope.
-        // Never degrade to a smaller tile: that would leave output columns unwritten.
-        // The live SM75 161..192 range is routed to concat MMA by the plan.
         break;
 #else
     case W8PairScheduleId::DualSplitKMediumC104:

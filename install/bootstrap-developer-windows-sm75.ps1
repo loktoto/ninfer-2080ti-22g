@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$NoBuild,
+    [string]$ToolRoot = "",
     [ValidateRange(1,16)]
     [int]$BuildJobs = 2
 )
@@ -42,12 +43,6 @@ $Common = @("--exact","--accept-package-agreements","--accept-source-agreements"
 if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     Invoke-Winget (@("install","--id","Git.Git","--silent") + $Common) "Git for Windows"
 }
-if (-not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
-    Invoke-Winget (@("install","--id","Kitware.CMake","--silent") + $Common) "CMake"
-}
-if (-not (Get-Command ninja.exe -ErrorAction SilentlyContinue)) {
-    Invoke-Winget (@("install","--id","Ninja-build.Ninja","--silent") + $Common) "Ninja"
-}
 
 $ProgramFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
 $VsWhere = Join-Path $ProgramFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -57,18 +52,8 @@ if (Test-Path $VsWhere -PathType Leaf) {
     $HasVctools = -not [string]::IsNullOrWhiteSpace(($Install | Out-String))
 }
 if (-not $HasVctools) {
-    $VsOverride = "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+    $VsOverride = "--wait --quiet --norestart --add Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.26100"
     Invoke-Winget (@("install","--id","Microsoft.VisualStudio.2022.BuildTools","--override",$VsOverride) + $Common) "Visual Studio 2022 C++ Build Tools"
-}
-
-$Nvcc = Get-Command nvcc.exe -ErrorAction SilentlyContinue
-$CudaOk = $false
-if ($Nvcc) {
-    $NvccText = (& $Nvcc.Source --version | Out-String)
-    $CudaOk = $NvccText -match "release\s+13\.1"
-}
-if (-not $CudaOk) {
-    Invoke-Winget (@("install","--id","Nvidia.CUDA","--version","13.1","--silent") + $Common) "NVIDIA CUDA Toolkit 13.1"
 }
 
 $VcRuntime = Join-Path $env:WINDIR "System32\vcruntime140.dll"
@@ -77,6 +62,7 @@ if (-not (Test-Path $VcRuntime -PathType Leaf)) {
 }
 
 Refresh-ProcessEnvironment
+& (Join-Path $PSScriptRoot 'provision-developer-tools-windows-sm75.ps1') -ToolRoot $ToolRoot
 
 Write-Host ""
 Write-Host "== Developer toolchain validation =="
@@ -95,7 +81,7 @@ Write-Host $NvccText.Trim()
 if (-not $NoBuild) {
     Write-Host ""
     Write-Host "== Clean Qwen3.8 / SM75 production build =="
-    & (Join-Path $Root "scripts\build-windows-sm75.ps1") -Clean -BuildJobs $BuildJobs
+    & (Join-Path $Root "scripts\build-windows-sm75.ps1") -Clean -BuildJobs $BuildJobs -WholeProgramCuda -RunW8Regression -RunFrontendRegression -RunAttentionRegression
     & (Join-Path $Root "scripts\verify-windows-sm75.ps1")
     & (Join-Path $Root "scripts\package-windows-sm75.ps1")
     & (Join-Path $Root "scripts\verify-package-windows-sm75.ps1")

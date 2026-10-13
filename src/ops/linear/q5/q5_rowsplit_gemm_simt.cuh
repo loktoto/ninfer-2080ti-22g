@@ -278,10 +278,16 @@ struct Q5Split4StoreEpilogue {
     }
 };
 
+#if defined(NINFER_SM75)
+#define NINFER_Q5_SPLIT4_LAUNCH_BOUNDS __launch_bounds__(128)
+#else
+#define NINFER_Q5_SPLIT4_LAUNCH_BOUNDS __launch_bounds__(128, 10)
+#endif
+
 template <class SC, int kTt, int kFullSlabs, int kStride, bool SplitOutput = false,
           int SplitRow = 0, class Epilogue = Q5Split4StoreEpilogue, bool TriggerPdl = false,
           bool JoinPdl = false>
-__launch_bounds__(128, 10) __global__ void q5_rowsplit_gemm_simt_split4_kernel(
+NINFER_Q5_SPLIT4_LAUNCH_BOUNDS __global__ void q5_rowsplit_gemm_simt_split4_kernel(
     const __nv_bfloat16* __restrict__ x, const std::uint8_t* __restrict__ codes,
     const std::uint8_t* __restrict__ high, const std::uint8_t* __restrict__ scales,
     __nv_bfloat16* __restrict__ out, __nv_bfloat16* __restrict__ out_tail, std::int32_t n,
@@ -517,5 +523,7 @@ __global__ void q5_rowsplit_gemm_simt_kernel(const __nv_bfloat16* __restrict__ x
         }
     }
 }
+
+#undef NINFER_Q5_SPLIT4_LAUNCH_BOUNDS
 
 } // namespace ninfer::ops::detail
