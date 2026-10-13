@@ -1,6 +1,7 @@
 # Build
 build/
 build-*/
+.deps/
 cmake-build-*/
 *.o
 *.obj
@@ -50,7 +51,7 @@ profiles/
 # Local Windows SM75 runtime state / secrets
 config/user-settings.json
 secrets/
-runtime/
+/runtime/
 logs/
 acceptance/
 models/

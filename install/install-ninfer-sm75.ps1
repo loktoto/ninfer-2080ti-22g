@@ -55,7 +55,7 @@ function Assert-ProductionGpu {
     $Rows = @(& $Smi --query-gpu=index,name,memory.total,compute_cap,driver_version --format=csv,noheader,nounits)
     if ($LASTEXITCODE -ne 0 -or $Rows.Count -eq 0) { throw "nvidia-smi GPU query failed." }
 
-    $Matches = @()
+    $CompatibleGpus = @()
     foreach ($Row in $Rows) {
         $P = @($Row -split "," | ForEach-Object { $_.Trim() })
         if ($P.Count -lt 5) { continue }
@@ -69,13 +69,13 @@ function Assert-ProductionGpu {
         $DriverMajor = 0
         try { $DriverMajor = [int](($Gpu.Driver -split "\.")[0]) } catch {}
         if ($Gpu.Name -match "2080\s*Ti" -and $Gpu.ComputeCapability -eq "7.5" -and $Gpu.VramMiB -ge 20000 -and $DriverMajor -ge 580) {
-            $Matches += $Gpu
+            $CompatibleGpus += $Gpu
         }
     }
-    if ($Matches.Count -eq 0) {
+    if ($CompatibleGpus.Count -eq 0) {
         throw "No compatible target was detected. Required: RTX 2080 Ti, 20GB+ VRAM, compute capability 7.5, NVIDIA driver branch R580 or newer."
     }
-    return $Matches
+    return $CompatibleGpus
 }
 
 function Test-SourceChecksums {

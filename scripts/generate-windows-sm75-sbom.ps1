@@ -58,7 +58,7 @@ foreach ($Entry in $Paragraphs) {
     if ($Seen.ContainsKey($Key)) { continue }
     $Seen[$Key] = $true
 
-    $BomRef = "pkg:vcpkg/$Name@$Version?feature=$Feature&triplet=$Arch"
+    $BomRef = "pkg:vcpkg/${Name}@${Version}?feature=${Feature}&triplet=${Arch}"
     $Components.Add([ordered]@{
         type = "library"
         name = $Name
@@ -76,7 +76,7 @@ if (-not [string]::IsNullOrWhiteSpace($CudaVersion)) {
         type = "library"
         name = "NVIDIA CUDA Runtime"
         version = $CudaVersion
-        "bom-ref" = "ninfer:cuda-runtime:$CudaVersion:sm75:static"
+        "bom-ref" = "ninfer:cuda-runtime:${CudaVersion}:sm75:static"
         properties = @(
             [ordered]@{ name = "ninfer:linkage"; value = "static" },
             [ordered]@{ name = "ninfer:target_arch"; value = "sm_75" }
@@ -102,7 +102,7 @@ $Bom = [ordered]@{
             )
         }
     }
-    components = @($Components)
+    components = $Components.ToArray()
 }
 
 $Parent = Split-Path $OutputPath -Parent

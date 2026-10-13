@@ -43,7 +43,8 @@
   "docs_files": [
     "windows-sm75.md",
     "INSTALL-WINDOWS-SM75.md",
-    "PROJECT-STATUS.md"
+    "PROJECT-STATUS.md",
+    "WINDOWS-SM75-LOCAL-VALIDATION.md"
   ],
   "installer_copy_directories": [
     "bin",
@@ -111,7 +112,8 @@
     "START-HERE.bat",
     "NOTICE.md",
     "SECURITY.md",
-    "docs/PROJECT-STATUS.md"
+    "docs/PROJECT-STATUS.md",
+    "docs/WINDOWS-SM75-LOCAL-VALIDATION.md"
   ],
   "launcher_contracts": [
     {

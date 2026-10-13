@@ -25,11 +25,14 @@ jobs:
     steps:
       - name: Validate release inputs
         shell: pwsh
+        env:
+          NINFER_RELEASE_TAG: ${{ inputs.tag }}
+          NINFER_ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
         run: |
-          if ("${{ inputs.tag }}" -notmatch "^windows-sm75-v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$") {
+          if ($env:NINFER_RELEASE_TAG -notmatch "^windows-sm75-v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$") {
             throw "Invalid release tag. Expected windows-sm75-vMAJOR.MINOR.PATCH."
           }
-          if ("${{ inputs.acceptance_run_id }}" -notmatch "^[0-9]+$") {
+          if ($env:NINFER_ACCEPTANCE_RUN_ID -notmatch "^[0-9]+$") {
             throw "acceptance_run_id must be a numeric GitHub Actions run ID."
           }
 
@@ -49,9 +52,13 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          NINFER_ACCEPTANCE_RUN_ID: ${{ inputs.acceptance_run_id }}
         run: |
           $ErrorActionPreference = "Stop"
-          [long]$runId = [long]"${{ inputs.acceptance_run_id }}"
+          [long]$runId = 0
+          if (-not [long]::TryParse($env:NINFER_ACCEPTANCE_RUN_ID, [ref]$runId) -or $runId -le 0) {
+            throw "acceptance_run_id must be a positive integer."
+          }
           $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$runId" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "Unable to read hardware acceptance run $runId." }
           if ($run.name -ne "RTX 2080 Ti SM75 hardware acceptance") {
@@ -155,9 +162,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          NINFER_RELEASE_TAG: ${{ inputs.tag }}
         run: |
           $ErrorActionPreference = "Stop"
-          $tag = "${{ inputs.tag }}"
+          $tag = $env:NINFER_RELEASE_TAG
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
 
