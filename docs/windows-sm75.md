@@ -68,12 +68,12 @@ To provision tools without starting a build:
 .\install\bootstrap-developer-windows-sm75.ps1 -NoBuild
 # In a new shell, activate/provision the cached tools again before building:
 .\install\provision-developer-tools-windows-sm75.ps1
-.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunW8Regression -RunFrontendRegression
+.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunW8Regression -RunFrontendRegression -RunAttentionRegression
 ```
 
 The bootstrap selects whole-program CUDA compilation, checks the canonical chat
-templates without a model or GPU, and runs the W8 numerical regression on the
-physical device before staging. This remains a developer build;
+templates without a model or GPU, and runs the W8, MMA and GQA numerical regressions
+on the physical device before staging. This remains a developer build;
 the ZIP-bound acceptance and release gates below still apply.
 
 ## Distribution contract
@@ -108,7 +108,7 @@ Full user guide: [INSTALL-WINDOWS-SM75.md](INSTALL-WINDOWS-SM75.md).
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-windows-sm75.ps1 -Clean -WholeProgramCuda -BuildW8Regression -RunFrontendRegression
+.\scripts\build-windows-sm75.ps1 -Clean -WholeProgramCuda -BuildW8Regression -BuildAttentionRegression -RunFrontendRegression
 ```
 
 The script:
@@ -129,7 +129,7 @@ cannot load through the production registry.
 For an already-provisioned dependency tree:
 
 ```powershell
-.\scripts\build-windows-sm75.ps1 -SkipDependencies -WholeProgramCuda -BuildW8Regression -RunFrontendRegression
+.\scripts\build-windows-sm75.ps1 -SkipDependencies -WholeProgramCuda -BuildW8Regression -BuildAttentionRegression -RunFrontendRegression
 ```
 
 ## Pinned Qwen3.8 production artifact
@@ -287,6 +287,18 @@ uses `NINFER_API_KEY`, or pass `-ApiKey` explicitly.
 ```
 
 ## SM75 W8 LinearPair regression gate
+
+The INT8 KV path also requires the SM75 MMA and GQA attention numerical gates:
+
+```powershell
+.\scripts\build-windows-sm75.ps1 -BuildJobs 2 -WholeProgramCuda -RunAttentionRegression
+```
+
+The standalone MMA test compares every output against dense CPU matrix products,
+including signed inputs and nonzero accumulators. The existing GQA test checks
+BF16/INT8 attention against its independent represented-input reference, including
+paged mappings, small-T, prefill and batched verification. `-BuildAttentionRegression`
+only builds these targets for hosted CI; it does not claim a physical GPU pass.
 
 Hosted Windows CI builds the focused `ninfer_linear_pair_w8_a16_test` target to catch source/link
 regressions without claiming numerical GPU validation. Physical RTX 2080 Ti qualification runs the

@@ -34,6 +34,8 @@ option(NINFER_BUILD_SM75_W8_REGRESSION
   "Build the focused SM75 W8 LinearPair conformance executable" OFF)
 option(NINFER_BUILD_SM75_FRONTEND_REGRESSION
   "Build the artifact-free canonical chat-template regression executable" OFF)
+option(NINFER_BUILD_SM75_ATTENTION_REGRESSION
+  "Build SM75 MMA and GQA attention numerical regressions" OFF)
 option(NINFER_QWEN38_ONLY
   "Build the production Qwen3.8-27B target profile and disable non-target heavy kernels" OFF)
 option(NINFER_CUDA_WHOLE_PROGRAM
@@ -152,6 +154,22 @@ if(NINFER_BUILD_SM75_W8_REGRESSION)
       ${PROJECT_SOURCE_DIR}/third_party
       ${PROJECT_SOURCE_DIR}/third_party/utf8proc)
     target_link_libraries(ninfer_linear_pair_w8_a16_test PRIVATE ninfer_ops)
+  endif()
+endif()
+
+if(NINFER_BUILD_SM75_ATTENTION_REGRESSION)
+  if(NOT CMAKE_CUDA_ARCHITECTURES STREQUAL "75")
+    message(FATAL_ERROR "NINFER_BUILD_SM75_ATTENTION_REGRESSION requires SM75")
+  endif()
+  add_executable(ninfer_sm75_mma_test tests/ops/test_sm75_mma.cu)
+  target_include_directories(ninfer_sm75_mma_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+  target_link_libraries(ninfer_sm75_mma_test PRIVATE CUDA::cudart)
+  if(NOT BUILD_TESTING)
+    add_executable(ninfer_gqa_attention_test tests/ops/test_gqa_attention.cpp)
+    target_include_directories(ninfer_gqa_attention_test PRIVATE
+      ${PROJECT_SOURCE_DIR}/tests ${PROJECT_SOURCE_DIR}/include
+      ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/third_party)
+    target_link_libraries(ninfer_gqa_attention_test PRIVATE ninfer_ops)
   endif()
 endif()
 

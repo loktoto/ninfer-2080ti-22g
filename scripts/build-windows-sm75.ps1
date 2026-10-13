@@ -11,6 +11,8 @@ param(
     [switch]$BuildW8Regression,
     [switch]$RunW8Regression,
     [switch]$RunFrontendRegression,
+    [switch]$BuildAttentionRegression,
+    [switch]$RunAttentionRegression,
     [switch]$WholeProgramCuda,
     [switch]$SkipDependencies,
     [switch]$Clean
@@ -135,6 +137,7 @@ if ($Clean) {
 
 $Toolchain = Join-Path $VcpkgRoot "scripts\buildsystems\vcpkg.cmake"
 if ($RunW8Regression) { $BuildW8Regression = $true }
+if ($RunAttentionRegression) { $BuildAttentionRegression = $true }
 
 $CmakeArgs = @(
     "-S", $RepoRoot,
@@ -149,6 +152,7 @@ $CmakeArgs = @(
     "-DNINFER_CUDA_WHOLE_PROGRAM=$($WholeProgramCuda.IsPresent.ToString().ToUpperInvariant())",
     "-DNINFER_BUILD_SM75_W8_REGRESSION=$($BuildW8Regression.IsPresent.ToString().ToUpperInvariant())",
     "-DNINFER_BUILD_SM75_FRONTEND_REGRESSION=$($RunFrontendRegression.IsPresent.ToString().ToUpperInvariant())",
+    "-DNINFER_BUILD_SM75_ATTENTION_REGRESSION=$($BuildAttentionRegression.IsPresent.ToString().ToUpperInvariant())",
     "-DBUILD_TESTING=OFF",
     "-DNINFER_BUILD_BENCHMARKS=OFF"
 )
@@ -159,9 +163,19 @@ Invoke-Checked { cmake.exe @CmakeArgs } "CMake configure"
 $BuildTargets = @("ninfer","ninfer-serve")
 if ($BuildW8Regression) { $BuildTargets += "ninfer_linear_pair_w8_a16_test" }
 if ($RunFrontendRegression) { $BuildTargets += "ninfer_qwen3_6_frontend_test" }
+if ($BuildAttentionRegression) { $BuildTargets += @("ninfer_sm75_mma_test", "ninfer_gqa_attention_test") }
 $BuildArgs = @("--build",$BuildPath,"--target") + $BuildTargets + @("--parallel",$BuildJobs.ToString())
 Write-Host "Compiling Qwen3.8-only SM75 targets [$($BuildTargets -join ', ')] with $BuildJobs parallel job(s) ..."
 Invoke-Checked { cmake.exe @BuildArgs } "CMake build"
+
+if ($RunAttentionRegression) {
+    foreach ($Name in @("ninfer_sm75_mma_test", "ninfer_gqa_attention_test")) {
+        $Exe = Get-ChildItem $BuildPath -Recurse -Filter "$Name.exe" -File | Select-Object -First 1
+        if (-not $Exe) { throw "Attention regression executable missing: $Name" }
+        Write-Host "Running physical SM75 numerical regression: $Name"
+        Invoke-Checked { & $Exe.FullName } "$Name (a skipped GPU test also fails qualification)"
+    }
+}
 
 if ($RunFrontendRegression) {
     Write-Host "Running artifact-free canonical chat-template regressions..."

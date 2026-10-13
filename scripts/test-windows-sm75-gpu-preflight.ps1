@@ -50,3 +50,6 @@ try { Assert-ProductionGpu | Out-Null } catch {
 }
 if (-not $Rejected) { throw 'Failed inventory query was accepted.' }
 Write-Host 'PASS GPU preflight fixture: failed query rejected'
+# The last fixture deliberately simulates a native exit of 1. GitHub's
+# powershell shell wrapper exits with LASTEXITCODE after the script returns.
+$global:LASTEXITCODE = 0

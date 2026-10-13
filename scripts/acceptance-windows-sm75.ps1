@@ -281,9 +281,21 @@ try {
             stream = $false
         }
         $ToolResponse = Invoke-NInferJson "POST" "http://127.0.0.1:$Port/v1/chat/completions" $ToolBody
-        $ToolCalls = $ToolResponse.choices[0].message.tool_calls
+        $ToolEvidencePath = Join-Path $EvidenceDir "tool-response-$Stamp.json"
+        $ToolResponse | ConvertTo-Json -Depth 20 | Set-Content $ToolEvidencePath -Encoding UTF8
+        $ToolMessage = $ToolResponse.choices[0].message
+        $ToolCalls = @()
+        if ($null -ne $ToolMessage.PSObject.Properties['tool_calls']) {
+            $ToolCalls = @($ToolMessage.tool_calls)
+        }
         if (-not $ToolCalls -or $ToolCalls.Count -lt 1) {
-            throw "Tool-call acceptance failed: the required tool call was not returned."
+            throw "Tool-call acceptance failed: the required tool call was not returned. See $ToolEvidencePath"
+        }
+        $WeatherCall = $ToolCalls | Where-Object { $_.function.name -eq "get_weather" } | Select-Object -First 1
+        if (-not $WeatherCall) { throw "Tool-call acceptance failed: get_weather was not returned. See $ToolEvidencePath" }
+        $WeatherArguments = $WeatherCall.function.arguments | ConvertFrom-Json
+        if ($null -eq $WeatherArguments.PSObject.Properties['city'] -or $WeatherArguments.city -cne "Paris") {
+            throw "Tool-call acceptance failed: get_weather city must be Paris. See $ToolEvidencePath"
         }
         $ToolCallPassed = $true
     }

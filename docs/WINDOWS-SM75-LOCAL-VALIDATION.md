@@ -4,6 +4,8 @@ Tests were run on **2026-10-12/13 (Asia/Hong_Kong)**. Native installation and sh
 Base-mode inference work on the machine below. **Production qualification failed**:
 8K semantic retrieval, required tool calls and greedy MTP parity did not pass.
 No production release or broad model-quality claim follows from this report.
+The follow-up investigation below identifies an INT8 attention defect; the original
+package results remain recorded separately from the pending replacement build.
 
 ## Machine and pinned inputs
 
@@ -113,12 +115,59 @@ Observed Base GPU weights use was 15.92 GiB, with approximately 16.71 GiB planne
 device allocation at 8K and a 264 MiB INT8 cache payload. Free memory varied with
 the desktop workload. Small-prompt measurements are not a throughput benchmark.
 
+## Follow-up numerical investigation (2026-10-13)
+
+Controls using the original `94c0484de2e4` package narrowed the failures to the
+INT8 attention path:
+
+| Control | Result |
+| --- | --- |
+| INT8 Base/MTP3 with CUDA Graph disabled | Same divergence as the original test; graph capture did not explain it |
+| INT8 MTP1 with full proposal head | Also diverged from Base |
+| BF16 Base/MTP3 | Exact token-ID and raw-output parity for the original deterministic prompt |
+| Fresh BF16 server, prefix reuse disabled, required tool, thinking off, 128 output tokens | Correct `get_weather` call with `city=Paris`, 26 generated tokens |
+| Matching fresh INT8 server and request, prefix reuse disabled | Fabricated weather JSON as content, 22 generated tokens; no tool call |
+| BF16 7936-token retrieval during concurrent compilation | Timed out at the original 120-second client deadline; no pass claimed |
+
+The existing FP64-reference GDN regression and Q4/Q5 Linear conformance passed
+against the baseline kernels. The existing GQA attention regression failed **33
+INT8 cases**; no BF16 case failed. A new standalone dense-matrix oracle reproduced
+incorrect FP16 and signed INT8 MMA results, both with zero and nonzero initial
+accumulators. For example, FP16 `C(0,0)` was `4.15625` instead of `4.65625`, and
+INT8 was `113` instead of `141`.
+
+The SM75 decomposition swapped the middle A fragments. In NVIDIA's documented
+[FP16 fragment layout](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k16-with-floating-point-type)
+and [INT8 fragment layout](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#matrix-fragments-for-mma-m16n8k32),
+packed `a0/a1` contain the top/bottom rows at the first K half, and `a2/a3`
+contain the second K half. Correcting both decompositions makes all four dense
+oracle cases pass on the physical SM75 GPU. The native replacement runtime and
+full GQA/model acceptance checks are **still pending** at this snapshot.
+
+The build now offers `-BuildAttentionRegression` for hosted compilation and
+`-RunAttentionRegression` for physical MMA/GQA numerical validation. Developer
+bootstrap runs these gates; hosted CI only builds their executables. GPU skips
+fail physical qualification.
+
+The follow-up also reproduced a Windows PowerShell 5.1 compiler-banner error
+and fixed `cl.exe` stderr capture through the process API. The first PR #59
+[Windows CI run](https://github.com/loktoto/ninfer-2080ti-22g/actions/runs/38285974614)
+failed after all eight GPU inventory fixtures printed PASS: the deliberate
+failed-query fixture left global `LASTEXITCODE=1`. Resetting that simulated
+status at successful test completion passes the actual GitHub shell exit pattern.
+Tool acceptance now saves the complete response before checking optional
+`tool_calls`, and verifies the function name and Paris argument.
+
+An additional pre-existing OpenAI schema test failed its unsupported `high`
+reasoning-effort capability check. It is not included in the passed checks above;
+this investigation does not claim the complete protocol suite passed.
+
 ## Reproduction and daily use
 
 Follow [the pinned developer setup](windows-sm75.md#provisioning-a-fresh-developer-pc), then:
 
 ```powershell
-.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunFrontendRegression -RunW8Regression
+.\scripts\build-windows-sm75.ps1 -WholeProgramCuda -RunFrontendRegression -RunW8Regression -RunAttentionRegression
 .\scripts\verify-windows-sm75.ps1 -RequireDependencyAudit
 .\scripts\package-windows-sm75.ps1
 .\scripts\verify-package-windows-sm75.ps1

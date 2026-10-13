@@ -44,7 +44,19 @@ if ($Sdk -ne [string]$Expected.windows_sdk) {
     throw "Windows SDK drift: expected $($Expected.windows_sdk), got '$Sdk'."
 }
 
-$ClText = (& $Cl 2>&1 | Out-String)
+# cl.exe writes its version banner to stderr. Windows PowerShell 5.1 turns
+# native stderr redirection into a terminating NativeCommandError under Stop.
+$ClInfo = New-Object Diagnostics.ProcessStartInfo
+$ClInfo.FileName = $Cl
+$ClInfo.UseShellExecute = $false
+$ClInfo.CreateNoWindow = $true
+$ClInfo.RedirectStandardOutput = $true
+$ClInfo.RedirectStandardError = $true
+$ClProcess = [Diagnostics.Process]::Start($ClInfo)
+try {
+    $ClText = $ClProcess.StandardOutput.ReadToEnd() + $ClProcess.StandardError.ReadToEnd()
+    $ClProcess.WaitForExit()
+} finally { $ClProcess.Dispose() }
 if ($ClText -notmatch "Compiler Version\s+([0-9.]+)") {
     throw "Unable to parse cl.exe compiler version."
 }
