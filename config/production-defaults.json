@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "profile": "qwen3.8-27b-sm75",
+  "model_key": "qwen3_8_27b",
+  "runtime_requirements": {
+    "gpu_name_regex": "2080\\s*Ti",
+    "compute_capability": "7.5",
+    "minimum_vram_mib": 20000,
+    "minimum_nvidia_driver_branch": 580,
+    "cuda_toolkit_required_for_runtime": false,
+    "vc_redist_required": true
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8080,
+    "max_context": 16384,
+    "max_concurrency": 1,
+    "kv_dtype": "int8",
+    "kv_capacity": "auto",
+    "device": 0
+  },
+  "modes": {
+    "base": {
+      "mtp": false,
+      "draft_tokens": 3,
+      "vision": false
+    },
+    "mtp": {
+      "mtp": true,
+      "draft_tokens": 3,
+      "vision": false
+    },
+    "vision": {
+      "mtp": false,
+      "draft_tokens": 3,
+      "vision": true
+    },
+    "mtp_vision": {
+      "mtp": true,
+      "draft_tokens": 3,
+      "vision": true
+    }
+  },
+  "acceptance": {
+    "required_contexts": [
+      8192,
+      32768,
+      65536
+    ],
+    "experimental_context": 131072
+  }
+}

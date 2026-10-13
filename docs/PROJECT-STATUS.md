@@ -1,6 +1,11 @@
 # Project status · NInfer SM75 by loktoto
 
-> Snapshot documented **2026-10-11**. This file is a roadmap and release-gate reference, not a live CI report. Check the linked GitHub pages for the latest actual status.
+> Snapshot documented **2026-10-13**. This file is a roadmap and release-gate reference, not a live CI report. Check the linked GitHub pages for the latest actual status.
+
+Local native Windows installation and short Base-mode GPU/API checks now pass on
+an RTX 2080 Ti 22GB. **Production qualification remains failed**: the tested 8K
+retrieval, required-tool-call and greedy MTP parity gates did not pass. See the
+[exact package, fixes, evidence and reproduction report](WINDOWS-SM75-LOCAL-VALIDATION.md).
 
 ## Maintained product
 
@@ -15,12 +20,10 @@
 | Workstream | Source of truth | Current release implication |
 | --- | --- | --- |
 | Native Windows runtime, installer, build and package | [PR #2](https://github.com/loktoto/ninfer-2080ti-22g/pull/2) · [Windows workflow](https://github.com/loktoto/ninfer-2080ti-22g/actions/workflows/windows-sm75.yml) | Needs full hosted package CI **and** physical-device qualification |
-| Optional RK4V4E8 compressed KV path | [PR #14 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Opt-in source feature on `master`, not the default Windows product; hardware conformance still required |
-| SM75 correctness / stacked integration | [PR #40 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/40), [PR #41 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/41) | Prior reviewed changes landed through root [#14](https://github.com/loktoto/ninfer-2080ti-22g/pull/14); hosted compile is not hardware qualification |
+| Optional RK4V4E8 compressed KV path | [PR #14 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/14) | Opt-in on `master`; still requires physical Windows conformance |
+| SM75 correctness / stacked integration | [PR #40 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/40), [PR #41 — merged](https://github.com/loktoto/ninfer-2080ti-22g/pull/41) | Implemented via #14 integration; physical correctness remains independently gated |
 | Windows installer regressions | [PR #42](https://github.com/loktoto/ninfer-2080ti-22g/pull/42), [PR #43](https://github.com/loktoto/ninfer-2080ti-22g/pull/43) | Fast PowerShell 5.1 and upgrade/rollback checks; do not replace full package testing |
-| Windows/RK4 integration and whole-program CI | [PR #47](https://github.com/loktoto/ninfer-2080ti-22g/pull/47), [PR #48](https://github.com/loktoto/ninfer-2080ti-22g/pull/48), [PR #54](https://github.com/loktoto/ninfer-2080ti-22g/pull/54) | All remain gated by native Windows build, packaging and exact-SHA physical GPU evidence |
-| Safety/correctness hardening | [Open PRs](https://github.com/loktoto/ninfer-2080ti-22g/pulls) | Review base64, media URL, MSVC limits, Vision scatter and HTTP worker-budget patches only after CI |
-| Published builds | [Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases) | **None as of 2026-10-11; physical release gates remain mandatory** |
+| Published builds | [Releases](https://github.com/loktoto/ninfer-2080ti-22g/releases) | **No production release claimed until hardware evidence exists** |
 
 ## Acceptance and release contract
 

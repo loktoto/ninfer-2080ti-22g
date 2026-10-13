@@ -419,6 +419,67 @@ void bf16_gdn_gating_proj_mma_unsplit_launch(Bf16GdnGatingTokenVariant variant, 
                                                      stream);
 }
 
+#if defined(NINFER_QWEN38_ONLY)
+
+[[noreturn]] void qwen38_only_reject_35b() {
+    throw std::logic_error(
+        "35B BF16 GDN kernels are disabled by the Qwen3.8-only SM75 production profile");
+}
+
+void bf16_gdn_gating_proj_35_simt_c4_launch(const Tensor&, const Weight&, const Weight&,
+                                            const Tensor&, const Tensor&, Tensor&, Tensor&,
+                                            cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_simt_c8_launch(const Tensor&, const Weight&, const Weight&,
+                                            const Tensor&, const Tensor&, Tensor&, Tensor&,
+                                            cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_mma_split32_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                                const Weight&, const Weight&, const Tensor&,
+                                                const Tensor&, void*, Tensor&, Tensor&,
+                                                cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_norm_gating_proj_35_mma_split32_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                                     const Tensor&, float, Tensor&, const Weight&,
+                                                     const Weight&, const Tensor&, const Tensor&,
+                                                     void*, Tensor&, Tensor&, cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_mma_split16_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                                const Weight&, const Weight&, const Tensor&,
+                                                const Tensor&, void*, Tensor&, Tensor&,
+                                                cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_mma_split8_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                               const Weight&, const Weight&, const Tensor&,
+                                               const Tensor&, void*, Tensor&, Tensor&,
+                                               cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_mma_split4_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                               const Weight&, const Weight&, const Tensor&,
+                                               const Tensor&, void*, Tensor&, Tensor&,
+                                               cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_mma_split2_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                               const Weight&, const Weight&, const Tensor&,
+                                               const Tensor&, void*, Tensor&, Tensor&,
+                                               cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+void bf16_gdn_gating_proj_35_mma_unsplit_launch(Bf16GdnGatingTokenVariant, const Tensor&,
+                                                const Weight&, const Weight&, const Tensor&,
+                                                const Tensor&, Tensor&, Tensor&, cudaStream_t) {
+    qwen38_only_reject_35b();
+}
+
+#else
+
 template <int ColsPerTile>
 void launch_35_simt(const Tensor& x, const Weight& a_weight, const Weight& b_weight,
                     const Tensor& A_log, const Tensor& dt_bias, Tensor& g, Tensor& beta,
@@ -547,5 +608,7 @@ void bf16_gdn_gating_proj_35_mma_unsplit_launch(Bf16GdnGatingTokenVariant varian
                                                      b_weight, A_log, dt_bias, nullptr, g, beta,
                                                      stream);
 }
+
+#endif
 
 } // namespace ninfer::ops::detail

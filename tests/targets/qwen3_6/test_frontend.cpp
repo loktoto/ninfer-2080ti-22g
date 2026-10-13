@@ -60,6 +60,12 @@ std::string read_file(const char* path) {
 
 std::string read_template_fixture(const char* path) {
     std::string source = read_file(path);
+    // Git for Windows may check text fixtures out with CRLF. The template
+    // fingerprints describe the canonical LF bytes embedded in artifacts.
+    for (std::size_t at = source.find("\r\n"); at != std::string::npos;
+         at = source.find("\r\n", at)) {
+        source.replace(at, 2, "\n");
+    }
     if (!source.empty() && source.back() == '\n') { source.pop_back(); }
     return source;
 }
@@ -411,7 +417,7 @@ int test_official_chat_template() {
     return failures;
 }
 
-int test_ordered_instruction_turns() {
+int test_ordered_instruction_turns(bool include_tokenizer_check = true) {
     fi::ChatRenderOptions no_generation;
     no_generation.add_generation_prompt = false;
 
@@ -449,12 +455,14 @@ int test_ordered_instruction_turns() {
                           appended_diagnostics.substr(stable_history.size()) ==
                               "<|im_start|>system\ncurrent diagnostics<|im_end|>\n",
                       "appended diagnostics changed the stable serialized history prefix");
-    const std::vector<int> stable_tokens   = official_tokenizer().encode(stable_history);
-    const std::vector<int> appended_tokens = official_tokenizer().encode(appended_diagnostics);
-    failures +=
-        check(appended_tokens.size() > stable_tokens.size() &&
-                  std::equal(stable_tokens.begin(), stable_tokens.end(), appended_tokens.begin()),
-              "appended diagnostics changed the stable token prefix");
+    if (include_tokenizer_check) {
+        const std::vector<int> stable_tokens = official_tokenizer().encode(stable_history);
+        const std::vector<int> appended_tokens = official_tokenizer().encode(appended_diagnostics);
+        failures += check(
+            appended_tokens.size() > stable_tokens.size() &&
+                std::equal(stable_tokens.begin(), stable_tokens.end(), appended_tokens.begin()),
+            "appended diagnostics changed the stable token prefix");
+    }
 
     fi::ChatRenderOptions tools = no_generation;
     tools.tool_jsons.push_back(
@@ -1304,7 +1312,20 @@ int test_media_preparation_cancellation() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) try {
+    if (argc == 2 && std::string_view(argv[1]) == "--chat-template-only") {
+        int failures = 0;
+        failures += test_official_chat_template();
+        failures += test_ordered_instruction_turns(false);
+        failures += test_reasoning_effort_chat_template();
+        failures += test_rewrite_checkpoint_trace();
+        if (failures == 0) { std::cout << "OK canonical chat-template regressions\n"; }
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc != 1) {
+        std::cerr << "usage: frontend_test [--chat-template-only]\n";
+        return 2;
+    }
     const FrontendResources owned = resources();
     const Frontend frontend       = FrontendFactory::create_component(owned);
     int failures                  = 0;
@@ -1334,4 +1355,7 @@ int main() {
     failures += test_media_preparation_cancellation();
     failures += test_disabled_vision();
     return failures == 0 ? 0 : 1;
+} catch (const std::exception& error) {
+    std::cerr << "frontend regression setup failed: " << error.what() << '\n';
+    return 1;
 }

@@ -90,7 +90,12 @@ bool is_27(const Bf16GdnGatingProblem& problem) noexcept {
 }
 
 bool is_35(const Bf16GdnGatingProblem& problem) noexcept {
+#if defined(NINFER_QWEN38_ONLY)
+    (void)problem;
+    return false;
+#else
     return problem.heads == 32 && problem.input_rows == 2048;
+#endif
 }
 
 bool schedule_uses_mma(Bf16GdnGatingScheduleId schedule) noexcept {

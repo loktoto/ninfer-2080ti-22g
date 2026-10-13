@@ -1,6 +1,7 @@
 # Build
 build/
 build-*/
+.deps/
 cmake-build-*/
 *.o
 *.obj
@@ -46,3 +47,15 @@ profiles/
 
 # Claude Code personal/local settings (may contain API tokens)
 .claude/settings.local.json
+
+# Local Windows SM75 runtime state / secrets
+config/user-settings.json
+secrets/
+/runtime/
+logs/
+acceptance/
+models/
+*.ninfer
+*.ninfer.partial
+INSTALL-STATE.json
+dist/
