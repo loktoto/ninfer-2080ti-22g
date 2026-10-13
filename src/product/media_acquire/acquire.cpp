@@ -145,9 +145,10 @@ UrlParts parse_url(std::string_view value) {
     out.scheme             = curlu_part(url.get(), CURLUPART_SCHEME);
     out.host               = curlu_part(url.get(), CURLUPART_HOST);
     out.port               = curlu_part(url.get(), CURLUPART_PORT, CURLU_DEFAULT_PORT);
-    const std::string user = curlu_part(url.get(), CURLUPART_USER);
+    const std::string user     = curlu_part(url.get(), CURLUPART_USER);
+    const std::string password = curlu_part(url.get(), CURLUPART_PASSWORD);
     if ((out.scheme != "http" && out.scheme != "https") || out.host.empty() || out.port.empty() ||
-        !user.empty()) {
+        !user.empty() || !password.empty()) {
         throw std::invalid_argument("media URL must be credential-free HTTP(S)");
     }
     return out;

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -38,6 +39,24 @@ void expect_rejects(const std::string& encoded) {
     throw std::runtime_error("accepted noncanonical base64 media: " + encoded);
 }
 
+void expect_rejects_credential_url(std::string_view url) {
+    Source source;
+    source.kind  = SourceKind::Url;
+    source.value = std::string(url);
+    Policy policy;
+    policy.max_bytes = 64;
+    try {
+        (void)acquire_bytes(source, policy);
+    } catch (const std::invalid_argument& error) {
+        if (std::string_view(error.what()).find("credential-free HTTP(S)") !=
+            std::string_view::npos) {
+            return;
+        }
+        throw std::runtime_error("credential-bearing media URL bypassed userinfo validation");
+    }
+    throw std::runtime_error("credential-bearing media URL was accepted");
+}
+
 } // namespace
 
 int main() {
@@ -57,7 +76,10 @@ int main() {
             expect_rejects(malformed);
         }
 
-        std::cout << "media acquisition base64 conformance passed\n";
+        expect_rejects_credential_url("https://:secret@127.0.0.1/image.png");
+        expect_rejects_credential_url("http://user:secret@127.0.0.1/image.png");
+
+        std::cout << "media acquisition base64 and URL policy conformance passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
